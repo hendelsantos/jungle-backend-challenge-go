@@ -7,3 +7,6 @@
 - Integrar alterações remotas preservando o histórico. Não usar force push nem descartar mudanças do usuário.
 - Se o push falhar, preservar os commits locais e informar a causa; nunca declarar envio sem confirmação do remoto.
 - Não versionar credenciais, arquivos `.env`, binários ou o clone de referência.
+
+- Prazo interno de entrega: 14/10/2026. Após ProcessWager, priorizar endpoints autenticados/OIDC e os próximos incrementos previstos no plano.
+- A cada incremento, explicar decisões, conceitos de Go e evidências dos testes; concluir com três perguntas técnicas curtas para apoiar o aprendizado do usuário.

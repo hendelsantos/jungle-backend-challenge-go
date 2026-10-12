@@ -2,7 +2,7 @@
 
 ## Estado e direção
 
-As Fases 0 e 1 estão concluídas: `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e os eventos tipados de domínio, com invariantes revisadas e verificadas. A Fase 2 está em progresso: schema PostgreSQL versionado e integração `pgx` (pool + `UnitOfWork`). A direção é uma arquitetura hexagonal enxuta: domínio independente, casos de uso compartilhados por HTTP e SQS, adaptadores para entrada e persistência, e composição centralizada.
+As Fases 0 e 1 estão concluídas: `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e os eventos tipados de domínio, com invariantes revisadas e verificadas. A Fase 2 está concluída: schema, pool, transações, abertura, leituras e reconciliação. `ProcessWager` implementa a parte financeira da Fase 3; endpoints e autenticação vêm a seguir. A direção é uma arquitetura hexagonal enxuta: domínio independente, casos de uso compartilhados por HTTP e SQS, adaptadores para entrada e persistência, e composição centralizada.
 
 Dependências planejadas:
 
@@ -13,6 +13,8 @@ bootstrap -> composição dos componentes concretos
 ```
 
 Não criamos interfaces, repositórios ou pastas vazias antes de seus casos de uso.
+
+As seções por incremento preservam o histórico das decisões. A seção [ProcessWager](#processwager--processamento-transacional-compartilhado) registra as garantias atuais e supera as pendências históricas de processamento e idempotência.
 
 ## Decisões implementadas na Fase 0
 
@@ -199,14 +201,42 @@ Quatro migrations `up`/`down` em `migrations/` seguem a convenção do golang-mi
 
 **Harness:** binários de teste diferentes correm em paralelo e disputavam a criação do schema; a aplicação das migrations agora ocorre sob `pg_advisory_xact_lock` com verificação `to_regclass`, dentro de uma transação — o schema aparece atomicamente e apenas uma vez. Os dados nunca são resetados (o trigger proíbe apagar o ledger), então os testes usam identidades únicas por execução; a suíte roda com `-count=2` no mesmo banco para provar isso.
 
-## Decisões previstas, ainda não implementadas
+## ProcessWager — processamento transacional compartilhado
 
-O plano mestre detalha as escolhas que serão confirmadas com código e testes:
+`internal/application/command/process_wager.go` coordena as cinco operações externas através das portas existentes. O domínio continua responsável por valores, movimentos, rejeições e referências; o adaptador PostgreSQL executa SQL explícito. O módulo Fx da aplicação fornece `ProcessWagerDeps`, com teste de resolução do grafo. Não existe dependência de HTTP/SQS no caso de uso.
 
-- PostgreSQL com `pgx`, SQL explícito e transação única para estado financeiro, ledger, inbox e outbox; constraints protegendo invariantes, incluindo os efeitos da abertura positiva.
-- Coordenação por carteira entre processos; idempotência persistente e resultado original disponível para replay.
-- Compensação direta única por transação, referências pendentes duráveis e retries limitados.
-- Keycloak/OIDC, escopo por provedor e operações internas autorizadas.
-- SQS com inbox, outbox após commit e recuperação de publicação com IDs estáveis.
+**Transação e concorrência:** a UnitOfWork abre uma transação READ COMMITTED. Primeiro procura as identidades por provedor. Sem replay, bloqueia apenas a linha da carteira com `SELECT ... FOR UPDATE`, consulta novamente a idempotência após a espera e avalia o domínio com o saldo atualizado. Atualiza saldo/versão usando também `WHERE version = expectedVersion`. Insere a transação, o lançamento apenas se houve movimento e os eventos na mesma transação SQL. LOSS e rejeições têm evento de resultado, mas não alteram saldo/versão nem criam ledger. Nenhum evento é publicado nesta etapa.
 
-Esses itens não estão concluídos. Migrations, ambiente Compose, endpoints de negócio, métricas e testes distribuídos serão acrescentados nas fases seguintes.
+A ordem é carteira → leitura da referência → escritas. Referências são consultadas sem adquirir outro lock de carteira: somente referências da mesma carteira podem movimentar saldo, logo todos os escritores válidos dessa referência já estão serializados. O índice único de compensação direta reforça a regra. Carteiras distintas avançam independentemente; não existe mutex global na aplicação. O relógio é lido depois do lock, truncado a microssegundos e limitado inferiormente ao `updated_at` observado, evitando regressão por espera ou pequeno desvio entre relógios. Não se usa timestamp para decidir a ordem financeira: lock e versão fazem isso.
+
+**Hash e identidades:** a aplicação calcula SHA-256, em hexadecimal minúsculo, do JSON UTF-8 de um DTO tipado, com chaves declaradas em ordem lexicográfica:
+
+```text
+amount, currency, externalTransactionId, gameId, kind, playerId,
+providerId, referenceExternalTransactionId (quando presente), roundId, walletId
+```
+
+`amount` é uma string normalizada para duas casas por `Money.FormatDecimal`; UUIDs são strings canônicas. `json.Marshal` produz o documento compacto, com o escape padrão do Go (inclusive `<`, `>` e `&`); não há normalização Unicode, de caixa ou de espaços de identificadores. Textos inválidos em UTF-8 ou com NUL são recusados. Referência vazia é omitida. Chave de idempotência, correlation ID e metadados de transporte não participam do hash. Um vetor fixo independente verifica o digest; formas decimais equivalentes e alterações dos campos de negócio também são testadas. A implementação usa JSON ordenado deste contrato, sem afirmar conformidade geral com RFC 8785.
+
+O futuro DTO HTTP/SQS deve converter ausência da referência para string vazia e rejeitar `null`, chaves repetidas e campos desconhecidos antes de chamar a aplicação. Esses parsers de transporte ainda não existem. Ambos usarão este mesmo cálculo; o cliente nunca fornece o hash confiável.
+
+`(provider_id, idempotency_key)` com hash igual retorna o estado persistido; hash diferente retorna `ErrIdempotencyConflict`. `(provider_id, external_transaction_id)` sob outra chave também é conflito, sem criar aliases. Para operações terminais o resultado é o saldo/versão original, sem reprocessar regras e sem novas escritas. A aplicação permanece **BRL-only**, inclusive para carteiras acessadas pelo comando; domínio/schema continuam aceitando USD para testes de moeda. Assim, o resultado persistido e a moeda da operação não divergem.
+
+**Retries:** o adaptador traduz SQLSTATE 40P01/40001 e 23505 somente dos dois índices de identidade para `ports.ErrRetryableTransaction`. O comando reexecuta toda a UnitOfWork, até quatro tentativas, com espera exponencial de base 25ms e jitter de até 25ms; o `context` interrompe a espera. Violações da outbox, checks, falhas de conexão ou commit ambíguo não são repetidos automaticamente. O chamador pode reenviar com a mesma identidade para consultar o resultado durável.
+
+No futuro consumidor SQS, a UnitOfWork externa da inbox será dona do commit e do retry completo. O aninhamento apenas compartilha a transação; não deve tentar recuperar uma transação SQL abortada repetindo só o comando interno. Falhas transitórias não são convertidas em `FAILED` nem publicadas como rejeições de negócio.
+
+**Referências:** ausentes ou ainda pendentes geram `PENDING_REFERENCE` e um evento durável sem ledger. Escopo, tipo, valor ou resultado terminal incompatível geram rejeição estável conforme o domínio. Replay de pendência apenas consulta o estado. `attempt_count`, `next_attempt_at` e `reference_deadline_at` continuam sem política operacional; TTL, claim, agendamento e retomada após reinício pertencem à Fase 4. Nenhuma migration existente foi alterada.
+
+**Evidências:** PostgreSQL 17 real, sem substituto em memória: BET, WIN, LOSS, REFUND, ROLLBACK de BET/WIN/REFUND, insuficiência de saldo de reversão, conflitos, referências incompatíveis e pendentes; 50 duplicatas simultâneas; disputa 80+80 sobre 100; compensações concorrentes; disputa da mesma identidade entre carteiras diferentes; carteira independente avançando durante lock. Um erro SQL 23505 na segunda inserção da outbox verifica rollback inclusive do primeiro evento e permite nova execução limpa. Reconciliação confirma o saldo em cenários de concorrência e reversões. Trocar os readers verifica leitura durável, mas não equivale a reiniciar três processos. Esses testes distribuídos permanecem pendentes.
+
+**Go e explicação para entrevista:** interfaces nas portas permitem que o comando dependa de operações necessárias, sem conhecer `pgx`. `context.Context` transporta cancelamento e, dentro do adaptador, a transação ativa. `%w`, `errors.Is` e `errors.As` preservam e classificam causas sem comparar mensagens. Snapshots são valores; cada chamada reidrata seus próprios agregados. Nos testes, goroutines iniciadas por um canal disputam conexões PostgreSQL e `sync.WaitGroup` aguarda a conclusão. Uma explicação curta: “O banco serializa operações por carteira; a chave única impede duplicações; saldo, ledger e eventos são confirmados juntos. O replay lê o resultado original, e a outbox permitirá publicar depois do commit.”
+
+## Trabalho ainda pendente
+
+- Endpoints financeiros com Keycloak/OIDC, isolamento por provedor e autorização das operações internas. Filtro por provedor no repositório não substitui autenticação.
+- Worker de referências com TTL/backoff e recuperação após reinício.
+- SQS/inbox, outbox publisher com lease, DLQ e testes de falhas entre commit, publicação e confirmação.
+- Runner de migrations, Compose reproduzível, readiness, métricas e demonstração com três processos independentes.
+
+As seções anteriores registram a evolução por incremento; as garantias atuais do processamento estão descritas acima. A entrega completa continua pendente.

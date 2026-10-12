@@ -18,12 +18,14 @@ func applicationModule() fx.Option {
 		fx.Provide(
 			postgres.NewWalletRepository,
 			postgres.NewWagerTransactionRepository,
+			postgres.NewWagerTransactionReader,
 			postgres.NewLedgerRepository,
 			postgres.NewOutboxRepository,
 			postgres.NewWalletReader,
 			postgres.NewLedgerReader,
 			postgres.NewReconciler,
 			newCreateWalletDeps,
+			newProcessWagerDeps,
 			newGetWalletDeps,
 			newListLedgerDeps,
 			newReconcileWalletDeps,
@@ -70,4 +72,18 @@ func newListLedgerDeps(wallets *postgres.WalletReader, ledger *postgres.LedgerRe
 
 func newReconcileWalletDeps(reconciler *postgres.Reconciler) query.ReconcileWalletDeps {
 	return query.ReconcileWalletDeps{Reconciliation: reconciler}
+}
+
+func newProcessWagerDeps(
+	uow *postgres.UnitOfWork,
+	wallets *postgres.WalletRepository,
+	wagers *postgres.WagerTransactionRepository,
+	lookups *postgres.WagerTransactionReader,
+	ledgerRepository *postgres.LedgerRepository,
+	outbox *postgres.OutboxRepository,
+) command.ProcessWagerDeps {
+	return command.ProcessWagerDeps{
+		UnitOfWork: uow, Wallets: wallets, Wagers: wagers, WagerLookups: lookups,
+		Ledger: ledgerRepository, Outbox: outbox, Now: time.Now, NewID: newUUID,
+	}
 }

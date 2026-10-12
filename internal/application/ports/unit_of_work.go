@@ -2,7 +2,16 @@
 // Interfaces appear here only when a use case already consumes them.
 package ports
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+// ErrRetryableTransaction marks units of work aborted by a deadlock, a
+// serialization failure or a concurrent duplicate on an idempotency index.
+// The whole work function may be re-run safely: the previous attempt rolled
+// back completely and re-resolution turns duplicates into replays.
+var ErrRetryableTransaction = errors.New("transaction aborted, safe to retry")
 
 // UnitOfWork guarantees that fn executes inside a single SQL transaction:
 // it commits when fn returns nil and rolls back on error or cancellation.

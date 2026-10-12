@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/application/ports"
@@ -34,19 +35,43 @@ func (u *UnitOfWork) WithinTx(ctx context.Context, fn func(ctx context.Context) 
 	}
 	tx, err := u.pool.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("postgres: begin transaction: %w", err)
+		return markRetryable(fmt.Errorf("postgres: begin transaction: %w", err))
 	}
 	if err := fn(context.WithValue(ctx, txKey{}, tx)); err != nil {
 		// Rollback must run even when ctx was cancelled; keep the original error.
 		if rollbackErr := tx.Rollback(context.WithoutCancel(ctx)); rollbackErr != nil && !errors.Is(rollbackErr, pgx.ErrTxClosed) {
-			return errors.Join(err, fmt.Errorf("postgres: rollback: %w", rollbackErr))
+			return markRetryable(errors.Join(err, fmt.Errorf("postgres: rollback: %w", rollbackErr)))
 		}
-		return err
+		return markRetryable(err)
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("postgres: commit transaction: %w", err)
+		return markRetryable(fmt.Errorf("postgres: commit transaction: %w", err))
 	}
 	return nil
+}
+
+// markRetryable classifies deadlocks, serialization failures and idempotency
+// races so the application can retry the whole unit of work without knowing
+// the driver. A concurrent duplicate on an idempotency index is retryable:
+// the next attempt resolves the committed operation and returns a replay.
+func markRetryable(err error) error {
+	if err == nil {
+		return nil
+	}
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return err
+	}
+	switch pgErr.Code {
+	case "40P01", "40001": // deadlock detected, serialization failure
+		return fmt.Errorf("%w: %w", ports.ErrRetryableTransaction, err)
+	case "23505": // unique violation
+		if pgErr.ConstraintName == "wager_transactions_provider_idempotency_uidx" ||
+			pgErr.ConstraintName == "wager_transactions_provider_external_uidx" {
+			return fmt.Errorf("%w: %w", ports.ErrRetryableTransaction, err)
+		}
+	}
+	return err
 }
 
 // TxFromContext exposes the transaction bound by WithinTx to repositories in

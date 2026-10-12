@@ -51,6 +51,14 @@ func (f *fakeWallets) InsertWallet(_ context.Context, state wallet.State) error 
 	return nil
 }
 
+func (f *fakeWallets) LockWallet(context.Context, uuid.UUID) (wallet.State, error) {
+	return wallet.State{}, errors.New("not used by create wallet")
+}
+
+func (f *fakeWallets) UpdateWalletBalance(context.Context, wallet.State, int64) error {
+	return errors.New("not used by create wallet")
+}
+
 type fakeWagers struct {
 	rec    *recorder
 	err    error

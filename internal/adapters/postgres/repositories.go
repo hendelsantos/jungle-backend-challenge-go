@@ -12,6 +12,7 @@ import (
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/application/ports"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/domain/events"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/domain/ledger"
+	"github.com/hendelsantos/jungle-backend-challenge-go/internal/domain/money"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/domain/wagering"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/domain/wallet"
 )
@@ -56,6 +57,65 @@ func (WalletRepository) InsertWallet(ctx context.Context, state wallet.State) er
 			return ports.ErrWalletAlreadyExists
 		}
 		return fmt.Errorf("postgres: insert wallet: %w", err)
+	}
+	return nil
+}
+
+// LockWallet serializes writers per wallet row: concurrent operations on the
+// same wallet block on FOR UPDATE while different wallets proceed in parallel.
+func (WalletRepository) LockWallet(ctx context.Context, id uuid.UUID) (wallet.State, error) {
+	tx, err := activeTx(ctx, "lock wallet")
+	if err != nil {
+		return wallet.State{}, err
+	}
+	var (
+		state        wallet.State
+		currency     string
+		balanceCents int64
+	)
+	err = tx.QueryRow(ctx, `
+		SELECT id, player_id, currency, balance_cents, version, created_at, updated_at
+		FROM wallets
+		WHERE id = $1
+		FOR UPDATE`, id).
+		Scan(&state.ID, &state.PlayerID, &currency, &balanceCents, &state.Version, &state.CreatedAt, &state.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return wallet.State{}, ports.ErrWalletNotFound
+	}
+	if err != nil {
+		return wallet.State{}, fmt.Errorf("postgres: lock wallet: %w", err)
+	}
+	balance, err := money.FromMinorUnits(balanceCents, currency)
+	if err != nil {
+		return wallet.State{}, fmt.Errorf("postgres: wallet %s balance: %w", id, err)
+	}
+	state.Balance = balance
+	rehydrated, err := wallet.Rehydrate(state)
+	if err != nil {
+		return wallet.State{}, fmt.Errorf("postgres: wallet %s violates invariants: %w", id, err)
+	}
+	return rehydrated.Snapshot(), nil
+}
+
+// UpdateWalletBalance writes the new balance only when the row still carries
+// the version the use case observed; under the row lock this is a defense
+// against lost updates, not an expected path.
+func (WalletRepository) UpdateWalletBalance(ctx context.Context, state wallet.State, expectedVersion int64) error {
+	tx, err := activeTx(ctx, "update wallet balance")
+	if err != nil {
+		return err
+	}
+	tag, err := tx.Exec(ctx, `
+		UPDATE wallets
+		SET balance_cents = $1, version = $2, updated_at = $3
+		WHERE id = $4 AND version = $5`,
+		state.Balance.MinorUnits(), state.Version, state.UpdatedAt, state.ID, expectedVersion)
+	if err != nil {
+		return fmt.Errorf("postgres: update wallet balance: %w", err)
+	}
+	if tag.RowsAffected() != 1 {
+		return fmt.Errorf("postgres: wallet %s: %w (expected version %d)",
+			state.ID, ports.ErrWalletConcurrentModification, expectedVersion)
 	}
 	return nil
 }

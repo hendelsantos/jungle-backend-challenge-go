@@ -19,7 +19,7 @@ import (
 )
 
 var (
-	ErrIncompleteDeps     = errors.New("create wallet dependencies are incomplete")
+	ErrIncompleteDeps     = errors.New("use case dependencies are incomplete")
 	ErrInvalidPlayerID    = errors.New("player id must be a non-nil uuid")
 	ErrInvalidCorrelation = errors.New("correlation id must be a non-nil uuid")
 	ErrInvalidAmount      = errors.New("initial balance must be a valid non-negative amount")

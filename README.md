@@ -2,7 +2,9 @@
 
 Solução em desenvolvimento para o [desafio de processamento distribuído de apostas](https://github.com/junglegaming/backend-challenge-go).
 
-**Estado: Fases 0 e 1 concluídas; Fase 2 quase completa.** Existe um servidor HTTP com Uber Fx, configuração validada, logs JSON, liveness e shutdown; o domínio financeiro completo com testes; migrations versionadas com trigger append-only e constraints verificados automaticamente; `pgx` com pool e `UnitOfWork` transacional; e os casos de uso `CreateWallet` (abertura atômica com `OPENING`, ledger e outbox no mesmo commit), `GetWallet`, `ListLedger` (cursor opaco, ordenação estável) e `ReconcileWallet` (snapshot `REPEATABLE READ READ ONLY`) — todos testados contra PostgreSQL real. Ainda não há endpoints de negócio, autenticação, SQS, readiness, runner de migrations integrado ou `ProcessWager`. O acompanhamento está em [PLANO_SISTEMA_JUNGLE_GO.md](PLANO_SISTEMA_JUNGLE_GO.md).
+**Estado: Fases 0, 1 e 2 concluídas; processamento financeiro da Fase 3 implementado na aplicação.** O servidor HTTP com Uber Fx já oferece liveness e shutdown. O domínio financeiro, as migrations, a abertura atômica, as consultas com cursor, a reconciliação e `ProcessWager` foram testados com PostgreSQL real. `ProcessWager` trata BET, WIN, LOSS, REFUND e ROLLBACK com lock por carteira, idempotência persistente e gravação de saldo, transação, ledger e outbox no mesmo commit.
+
+Ainda faltam endpoints de negócio autenticados, Keycloak/OIDC, SQS/inbox/publisher, worker de referências, Compose, readiness e runner de migrations. Referências ausentes ficam persistidas em `PENDING_REFERENCE`, mas ainda não são retomadas automaticamente. O acompanhamento está em [PLANO_SISTEMA_JUNGLE_GO.md](PLANO_SISTEMA_JUNGLE_GO.md). Prazo interno: **14/10/2026**.
 
 ## Executar localmente
 
@@ -52,12 +54,14 @@ make build        # bin/server
 
 Os testes atuais verificam configuração, contrato de liveness, composição Fx, porta ocupada, liberação do listener, conclusão de requisições durante shutdown, gate do módulo de banco, invariantes de `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e eventos de domínio. Não são testes de integração financeira nem substituem os cenários obrigatórios com infraestrutura real.
 
-Os testes de integração (transações do `UnitOfWork`, caso de uso `CreateWallet`, leituras com cursor, reconciliação e proteções de schema) exigem PostgreSQL real (migrations aplicadas pelo próprio harness) e usam a build tag `integration` (pulam sem a variável de conexão; nenhum mock substitui o banco):
+Os testes de integração (transações do `UnitOfWork`, casos de uso `CreateWallet` e `ProcessWager`, leituras com cursor, reconciliação e proteções de schema) exigem PostgreSQL real (migrations aplicadas pelo próprio harness) e usam a build tag `integration` (pulam sem a variável de conexão; nenhum mock substitui o banco):
 
 ```sh
 docker run -d --name jungle-pg -e POSTGRES_PASSWORD=verify -p 127.0.0.1:55432:5432 postgres:17-alpine
+# Aguarde pg_isready indicar que o banco aceita conexões.
+docker exec jungle-pg pg_isready
 TEST_DATABASE_URL='postgres://postgres:verify@127.0.0.1:55432/postgres?sslmode=disable' \
-  go test -tags=integration ./internal/...
+  go test -race -tags=integration ./... -count=2
 docker rm -f jungle-pg
 ```
 
@@ -75,13 +79,24 @@ go test ./internal/domain/wagering -run '^$' -fuzz '^FuzzBetRefundRollback$' -fu
 
 `Money` usa centavos em `int64` e recebe valores externos como `{"amount":"25.90","currency":"BRL"}`. As regras, limites e erros estão em [ARCHITECTURE.md](ARCHITECTURE.md#money--primeiro-incremento-da-fase-1).
 
-`Wallet` mantém identidade, jogador, saldo, versão e timestamps em campos privados. Criação inicia na versão 1; reidratação preserva o estado persistido; crédito e débito validam moeda e limites antes de alterar o agregado. Rejeições e valores zero preservam saldo, versão e horário de atualização. As garantias entre processos e a gravação do ledger serão implementadas com PostgreSQL.
+`Wallet` mantém identidade, jogador, saldo, versão e timestamps em campos privados. Criação inicia na versão 1; reidratação preserva o estado persistido; crédito e débito validam moeda e limites antes de alterar o agregado. Rejeições e valores zero preservam saldo, versão e horário de atualização. A aplicação coordena escritas por `SELECT ... FOR UPDATE` e grava o ledger no mesmo commit; a demonstração com três processos continua pendente.
 
-`WagerTransaction` implementa os estados e as regras de `BET`, `WIN`, `LOSS`, `REFUND`, `ROLLBACK` e abertura interna `OPENING`. O domínio avalia referências, impede reprocessamento de estados terminais e mantém o resultado original para a futura persistência. A política de compensação está na [ADR 0001](docs/adr/0001-compensacao-direta.md). Idempotência durável, retry de referências e atomicidade SQL ainda estão pendentes.
+`WagerTransaction` implementa os estados e as regras de `BET`, `WIN`, `LOSS`, `REFUND`, `ROLLBACK` e abertura interna `OPENING`. O domínio avalia referências, impede reprocessamento de estados terminais e mantém o resultado original persistido para replay. A política de compensação está na [ADR 0001](docs/adr/0001-compensacao-direta.md). Idempotência durável e atomicidade SQL estão implementadas; retry de referências ainda está pendente.
 
-`WalletLedgerEntry` é um tipo-valor imutável com um lançamento por movimentação efetiva: direção, quantia positiva, saldo anterior e posterior consistentes (`balanceAfter = balanceBefore ± amount`) e timestamp em UTC. Não há setters; criação e reidratação coincidem. Unicidade `(wallet_id, transaction_id)` e proteção contra edição/exclusão serão impostas pelo schema PostgreSQL.
+`WalletLedgerEntry` é um tipo-valor imutável com um lançamento por movimentação efetiva: direção, quantia positiva, saldo anterior e posterior consistentes (`balanceAfter = balanceBefore ± amount`) e timestamp em UTC. Não há setters; criação e reidratação coincidem. Unicidade `(wallet_id, transaction_id)` e proteção contra edição/exclusão são impostas pelo schema PostgreSQL.
 
-Os eventos tipados (`WagerTransactionProcessed`, `WagerTransactionRejected`, `WalletBalanceChanged`, `WagerTransactionPendingReference`) são envelopes imutáveis com `eventId`, `eventType`, `aggregateId` derivado dos dados, `correlationId`, `causationId` opcional, `occurredAt` em UTC, `version` por tipo e payload tipado; `MarshalJSON` fixa o contrato do payload da outbox com dinheiro em string decimal. A gravação na `outbox_events` e a publicação pós-commit serão implementadas com PostgreSQL e SQS.
+Os eventos tipados (`WagerTransactionProcessed`, `WagerTransactionRejected`, `WalletBalanceChanged`, `WagerTransactionPendingReference`) são envelopes imutáveis com `eventId`, `eventType`, `aggregateId` derivado dos dados, `correlationId`, `causationId` opcional, `occurredAt` em UTC, `version` por tipo e payload tipado; `MarshalJSON` fixa o contrato do payload da outbox com dinheiro em string decimal. A gravação na `outbox_events` é atômica com as operações financeiras; a publicação pós-commit via SQS ainda será implementada.
+
+## ProcessWager: garantias verificadas
+
+- Duas BETs de `80.00` sobre `100.00`: uma processada, uma rejeitada, saldo `20.00` e um débito.
+- 50 chamadas concorrentes da mesma BET: uma operação, um débito e dois eventos; 49 replays.
+- Replay retorna saldo/versão originais, mesmo após novas movimentações. Mesma chave com conteúdo diferente ou mesmo ID externo com outra chave gera conflito.
+- LOSS e rejeições não geram ledger; REFUND/ROLLBACK concorrentes não compensam a mesma referência duas vezes.
+- Erro SQL na segunda gravação da outbox desfaz carteira, transação, ledger e primeiro evento.
+- Uma carteira progride enquanto outra está bloqueada; reconciliação confirma os saldos após os cenários concorrentes e de reversão.
+
+Os testes usam conexões reais e goroutines em um processo por pacote. **Ainda não demonstram três instâncias independentes**, comunicação HTTP/SQS, reinício de processos ou autorização. Testes sem `TEST_DATABASE_URL` são ignorados, não aprovados. As decisões de hash, retries e transação estão em [ARCHITECTURE.md](ARCHITECTURE.md#processwager--processamento-transacional-compartilhado).
 
 ## Docker
 
@@ -119,7 +134,7 @@ docs/reference/                   snapshot do enunciado e procedência
 references/                       clone local do desafio (ignorado pelo Git)
 ```
 
-As decisões e limites estão em [ARCHITECTURE.md](ARCHITECTURE.md). O próximo incremento é o caso de uso `ProcessWager` (BET/WIN/LOSS/REFUND/ROLLBACK com lock por carteira, idempotência persistente e hash canônico); os endpoints HTTP autenticados vêm na Fase 3. As demais pastas serão criadas quando tiverem implementação.
+As decisões e limites estão em [ARCHITECTURE.md](ARCHITECTURE.md). O próximo incremento inicia os endpoints financeiros e a autenticação OIDC com Keycloak, conforme a Fase 3. HTTP e SQS deverão chamar o mesmo `ProcessWager`; o `providerId` precisará vir da identidade autorizada na fronteira de entrada.
 
 O módulo e o remoto `origin` usam o repositório [hendelsantos/jungle-backend-challenge-go](https://github.com/hendelsantos/jungle-backend-challenge-go).
 

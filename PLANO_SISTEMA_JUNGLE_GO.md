@@ -577,10 +577,10 @@ Evitar `walletId`, `playerId`, `providerId` dinâmicos como labels de alta cardi
 - [x] `WagerTransaction`: transições válidas, terminal imutável, pending reference, códigos estáveis.
 - [x] `BET`: positivo, insuficiência de saldo.
 - [x] `WIN`: positivo, crédito e vínculo opcional validado.
-- [ ] `LOSS`: exclusivamente `0.00`, sem ledger e sem incremento de versão (valor/estado/versão testados; ledger pendente).
-- [x] `REFUND`: BET processada, mesma moeda/rodada/valor, compensação única (política unitária; garantia SQL pendente).
+- [x] `LOSS`: exclusivamente `0.00`, sem ledger e sem incremento de versão.
+- [x] `REFUND`: BET processada, mesma moeda/rodada/valor, compensação única (política e integração SQL verificadas).
 - [x] `ROLLBACK`: inversão de BET/WIN/REFUND, insuficiência de saldo de reversão.
-- [ ] `OPENING`: somente origem interna, metadados externos nulos, zero vs positivo (construtores e resultado testados; abertura com ledger/eventos pendente).
+- [x] `OPENING`: somente origem interna, metadados externos nulos, zero vs positivo, com ledger/eventos atômicos.
 - [ ] Hash canônico HTTP/SQS igual, payload diferente com mesma chave em conflito.
 
 ### 11.2 Integração real
@@ -588,7 +588,7 @@ Evitar `walletId`, `playerId`, `providerId` dinâmicos como labels de alta cardi
 - [ ] Subir PostgreSQL + Keycloak + LocalStack via Compose; aplicar e reverter migrations em ambiente de teste.
 - [ ] Testar constraints, triggers de imutabilidade, unicidade da carteira, saldo não negativo, abertura única.
 - [ ] Testar `client_credentials` real, token ausente/inválido/expirado, isolamento provider-a/provider-b, replay de outro provedor bloqueado.
-- [ ] Testar atomicidade: falha depois de gravar ledger mas antes de commit → rollback de tudo.
+- [x] Testar atomicidade: falha SQL na segunda escrita da outbox, depois do ledger → rollback de tudo.
 - [ ] Testar inbox com mesmo `messageId` e hash igual; reentrega com hash diferente detectada.
 - [ ] Testar processamento da mesma transação via HTTP e SQS sem novo movimento.
 - [ ] Testar inbox/outbox e comunicação real com SQS, redrive para DLQ, eventos tipados.
@@ -598,9 +598,9 @@ Evitar `walletId`, `playerId`, `providerId` dinâmicos como labels de alta cardi
 
 ### 11.3 Concorrência e falhas (critérios oficiais)
 
-- [ ] **Teste A:** 50 requisições paralelas da MESMA BET → um débito e um ledger.
-- [ ] **Teste B:** saldo `100.00`, duas BET distintas de `80.00` simultâneas → uma processada, uma rejeitada, saldo `20.00`, um débito.
-- [ ] **Teste C:** carteiras distintas processadas simultaneamente sem lock global.
+- [x] **Teste A:** 50 requisições paralelas da MESMA BET → um débito e um ledger.
+- [x] **Teste B:** saldo `100.00`, duas BET distintas de `80.00` simultâneas → uma processada, uma rejeitada, saldo `20.00`, um débito.
+- [x] **Teste C:** carteiras distintas processadas simultaneamente sem lock global.
 - [ ] **Teste D:** repetir testes de concorrência com **pelo menos 3 processos independentes**, cada um com seu pool de conexão.
 - [ ] **Teste E:** matar consumidor após commit e antes de `DeleteMessage`; reentrega não duplica.
 - [ ] **Teste F:** matar publisher depois de SQS aceitar o evento e antes de marcar publicado; replay mantém `eventId`.
@@ -608,7 +608,7 @@ Evitar `walletId`, `playerId`, `providerId` dinâmicos como labels de alta cardi
 - [ ] **Teste H:** reiniciar todas as instâncias; resultado idempotente, pendências e finanças continuam íntegros.
 - [ ] **Teste I:** concorrer HTTP/SQS pelo mesmo external ID/key; um único resultado persistido.
 - [ ] **Teste J:** verificar reconciliação ledger = saldo final após cada cenário.
-- [ ] **Teste K:** `go test -race` nos testes aplicáveis.
+- [x] **Teste K:** `go test -race` nos testes aplicáveis.
 
 **Instrumentação de falhas:** preferir failpoints **somente nos testes**, em pontos explícitos (`after_commit_before_sqs_delete`, `after_sqs_publish_before_outbox_ack`), nunca ativáveis em produção. Testes precisam confirmar efeitos no banco e recebimentos duplicados, não apenas comparar código HTTP.
 
@@ -716,7 +716,7 @@ incremento inicia a Fase 2 com as migrations de `wallets`, `wager_transactions`,
 
 ### Fase 2 — Persistência transacional e abertura
 - [x] Criar migrations: wallets, transactions, ledger, inbox, outbox.
-- [ ] Definir repositórios e `UnitOfWork` baseada em `pgx.Tx` (parcial: UoW, pool, escritas da abertura e leituras de carteira/ledger/reconciliação prontos; leitura com `FOR UPDATE` e repositórios do ProcessWager pendentes).
+- [x] Definir repositórios e `UnitOfWork` baseada em `pgx.Tx`, incluindo `FOR UPDATE`, escritas financeiras e leituras de idempotência/referências.
 - [x] Criar abertura positiva/zero de carteira atômica, com `OPENING` quando exigido.
 - [x] Testar `UNIQUE`, `CHECK`, trigger imutável e rollback de erros.
 - [x] Criar reconciliação em snapshot e leitura de ledger cursor.
@@ -825,12 +825,34 @@ e hash canônico).
 - [ ] Provisionar Keycloak; validar tokens, issuer/audience e roles.
 - [ ] Restringir operações internas e escopo por provedor.
 - [ ] Criar endpoints e contrato JSON/erros.
-- [ ] Implementar `BET`, `WIN`, `LOSS` e idempotência persistente.
-- [ ] Implementar `REFUND`, `ROLLBACK` e unicidade de compensações.
-- [ ] Armazenar saldo/versão originais para replay.
-- [ ] Testar as apostas `80.00+80.00` e 50 replays concorrentes no PG real.
+- [x] Implementar `BET`, `WIN`, `LOSS` e idempotência persistente (caso de uso; HTTP/OIDC ainda pendentes).
+- [x] Implementar `REFUND`, `ROLLBACK` e unicidade de compensações (caso de uso).
+- [x] Armazenar saldo/versão originais para replay.
+- [x] Testar as apostas `80.00+80.00` e 50 chamadas concorrentes no PG real (goroutines; três processos ainda pendentes).
 
 **Pronto quando:** HTTP autenticado cumpre operações financeiras sem saldo negativo ou débito duplicado.
+
+**Incremento ProcessWager — 12/10/2026:** concluído o caso de uso compartilhado das cinco
+operações externas, reaproveitando as alterações locais existentes. Corrigidos os erros
+de compilação encontrados no baseline e fixtures de teste inconsistentes. Hash SHA-256
+sobre JSON tipado ordenado, normalização monetária, deduplicação por provedor/key e
+provedor/ID externo, replay histórico e `SELECT ... FOR UPDATE` com nova consulta de
+idempotência após o lock. Saldo, transação, ledger e outbox compartilham um commit;
+LOSS/rejeições não produzem ledger. Referências ausentes são persistidas, ainda sem
+worker/TTL. Retries limitados da transação para deadlock/serialização e disputa nos índices
+de identidade; aplicação BRL-only. Composição Fx e nenhum arquivo de migration alterado.
+
+Verificações: `make check`, `go vet -tags=integration ./...`, `make build` e integração
+contra PostgreSQL 17 real com `go test -race -tags=integration ./... -count=2`, sem testes
+ignorados. Foram verificados os cinco tipos, três tipos de referência de ROLLBACK,
+rejeição de reversão sem saldo, referências incompatíveis, replay de pendência,
+replay histórico após WIN, erro SQL na outbox com rollback integral, 50 chamadas
+duplicadas, disputa 80+80, compensações concorrentes e progresso de carteira independente.
+Teste adicional com barreira força disputa da mesma identidade em carteiras diferentes
+e valida a conversão da violação única em conflito após retry.
+Os testes A/B/C estão demonstrados com goroutines e conexões reais; D (três processos),
+HTTP/SQS, reinicializações e recuperação ainda estão pendentes. Próximo incremento:
+endpoints financeiros e OIDC/Keycloak. Prazo interno de entrega: **14/10/2026**.
 
 ### Fase 4 — Referências pendentes
 - [ ] Persistir `PENDING_REFERENCE` com deadline/backoff.
