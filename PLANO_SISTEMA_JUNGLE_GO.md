@@ -4,7 +4,7 @@
 > **Desafio:** Processamento Distribuído de Apostas em Go  
 > **Origem:** <https://github.com/junglegaming/backend-challenge-go>  
 > **Data do planejamento:** 12/10/2026  
-> **Estado:** Fase 0 implementada; validações e progresso registrados na seção 13. Fases 1–6 pendentes.
+> **Estado:** Fase 0 concluída; Fase 1 iniciada com `Money`. Validações e progresso registrados na seção 13. Demais itens da Fase 1 e Fases 2–6 pendentes.
 
 ---
 
@@ -235,7 +235,7 @@ A árvore é sugestão; manter pacotes pequenos, com dependências apontando par
 Representação imutável por campos privados (`cents int64`, `currency string`). A API usa sempre objeto JSON com `amount` **string**, não número.
 
 Regras:
-- Aceitar somente código de moeda explicitamente suportado; inicialmente `BRL` (ISO 4217), mantendo a moeda em todo objeto e registro.
+- Aceitar somente código de moeda explicitamente suportado, mantendo a moeda em todo objeto e registro. No incremento `Money`, o domínio reconhece `BRL` e `USD` (ISO 4217, escala dois) para testar incompatibilidade entre valores válidos; a futura aplicação será restrita a `BRL`. Decisão registrada em `ARCHITECTURE.md`.
 - Entrada externa: `"0.00"`, `"25.00"`, `"25.90"` válidos; rejeitar vazio, `NaN`, infinito, expoente, mais de duas casas, negativo, caracteres estranhos e overflow.
 - Política de normalização escolhida: **aceitar `"1"`, `"1.0"` e `"1.00"` como equivalentes**, sempre canonicalizar para `"1.00"`; registrar isso em `ARCHITECTURE.md`. Se simplificar, pode optar por aceitar somente duas casas, desde que documentado e testado; não alternar política após integração.
 - Internamente, saldos nunca são negativos; diferenças de reconciliação e cálculos intermediários podem sê-lo.
@@ -571,7 +571,7 @@ Evitar `walletId`, `playerId`, `providerId` dinâmicos como labels de alta cardi
 
 ### 11.1 Unitários
 
-- [ ] `Money`: `0.00`, `1`, `1.0`, `1.00`, overflow, underflow, `MinInt64`, diferentes moedas, valores inválidos, JSON string, negação/comparação.
+- [x] `Money`: `0.00`, `1`, `1.0`, `1.00`, overflow, underflow, `MinInt64`, diferentes moedas, valores inválidos, JSON string, negação/comparação.
 - [ ] `Wallet`: criação, reidratação, débito/crédito, saldo zero/insuficiente, overflow, versão e moedas diferentes.
 - [ ] `WagerTransaction`: transições válidas, terminal imutável, pending reference, códigos estáveis.
 - [ ] `BET`: positivo, insuficiência de saldo.
@@ -653,13 +653,21 @@ Build Docker e smoke em container também passaram: HTTP 200, usuário sem privi
 O próximo incremento é `Money`, conforme seção 16.3. Não há endpoints de negócio nem infraestrutura financeira implementados.
 
 ### Fase 1 — Domínio financeiro isolado
-- [ ] Criar `Money` e testes de parsing/overflow/moeda.
+- [x] Criar `Money` e testes de parsing/overflow/moeda.
 - [ ] Criar `Wallet` e testes de débito/crédito/versão.
 - [ ] Criar transação, estados e políticas para seis kinds.
 - [ ] Criar ledger entry e eventos tipados sem dependência de infraestrutura.
 - [ ] Revisar invariantes e rodar `go test -race ./...`.
 
 **Pronto quando:** todas as regras de negócio têm testes unitários e não usam SQL nem framework.
+
+**Incremento Money — 12/10/2026:** implementado em `internal/domain/money`, sem dependências
+de infraestrutura. Inclui construtores, parsing decimal, aritmética protegida, comparação,
+formatação e JSON com valores em string. `make check` passou (`go vet`, testes e `-race`);
+`go test ./internal/domain/money -cover` registrou 100% de cobertura de instruções.
+Fuzzing por 10s em cada alvo passou: 516.908 execuções de aritmética e 552.245 de parsing,
+comparadas com oráculos exatos de `math/big`. Esses números não são benchmarks nem provas
+de correção completa. O próximo incremento é `Wallet`; os demais itens desta fase permanecem pendentes.
 
 ### Fase 2 — Persistência transacional e abertura
 - [ ] Criar migrations: wallets, transactions, ledger, inbox, outbox.
