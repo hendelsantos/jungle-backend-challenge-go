@@ -4,7 +4,7 @@
 > **Desafio:** Processamento Distribuído de Apostas em Go  
 > **Origem:** <https://github.com/junglegaming/backend-challenge-go>  
 > **Data do planejamento:** 12/10/2026  
-> **Estado:** Fase 0 concluída; Fase 1 iniciada com `Money`. Validações e progresso registrados na seção 13. Demais itens da Fase 1 e Fases 2–6 pendentes.
+> **Estado:** Fase 0 concluída; Fase 1 com `Money` e `Wallet`. Validações e progresso registrados na seção 13. Demais itens da Fase 1 e Fases 2–6 pendentes.
 
 ---
 
@@ -573,7 +573,7 @@ Evitar `walletId`, `playerId`, `providerId` dinâmicos como labels de alta cardi
 ### 11.1 Unitários
 
 - [x] `Money`: `0.00`, `1`, `1.0`, `1.00`, overflow, underflow, `MinInt64`, diferentes moedas, valores inválidos, JSON string, negação/comparação.
-- [ ] `Wallet`: criação, reidratação, débito/crédito, saldo zero/insuficiente, overflow, versão e moedas diferentes.
+- [x] `Wallet`: criação, reidratação, débito/crédito, saldo zero/insuficiente, overflow, versão e moedas diferentes.
 - [ ] `WagerTransaction`: transições válidas, terminal imutável, pending reference, códigos estáveis.
 - [ ] `BET`: positivo, insuficiência de saldo.
 - [ ] `WIN`: positivo, crédito e vínculo opcional validado.
@@ -655,7 +655,7 @@ O próximo incremento é `Money`, conforme seção 16.3. Não há endpoints de n
 
 ### Fase 1 — Domínio financeiro isolado
 - [x] Criar `Money` e testes de parsing/overflow/moeda.
-- [ ] Criar `Wallet` e testes de débito/crédito/versão.
+- [x] Criar `Wallet` e testes de débito/crédito/versão.
 - [ ] Criar transação, estados e políticas para seis kinds.
 - [ ] Criar ledger entry e eventos tipados sem dependência de infraestrutura.
 - [ ] Revisar invariantes e rodar `go test -race ./...`.
@@ -669,6 +669,14 @@ formatação e JSON com valores em string. `make check` passou (`go vet`, testes
 Fuzzing por 10s em cada alvo passou: 516.908 execuções de aritmética e 552.245 de parsing,
 comparadas com oráculos exatos de `math/big`. Esses números não são benchmarks nem provas
 de correção completa. O próximo incremento é `Wallet`; os demais itens desta fase permanecem pendentes.
+
+**Incremento Wallet — 12/10/2026:** implementado em `internal/domain/wallet`, com estado
+encapsulado, UUIDs não nulos, timestamps UTC, criação na versão 1 e reidratação sem
+reaplicar movimentos. Débito/crédito validam moeda, saldo e limites monetários/de versão;
+erros e operações de valor zero preservam todo o estado. `make check` e `make build`
+passaram. A cobertura de instruções do pacote foi 98,3%; o fuzzing de sequências passou
+com 252.946 execuções em 10s. Unicidade, concorrência entre processos e ledger atômico
+continuam pendentes de persistência. Próximo incremento: transação, estados e políticas.
 
 ### Fase 2 — Persistência transacional e abertura
 - [ ] Criar migrations: wallets, transactions, ledger, inbox, outbox.

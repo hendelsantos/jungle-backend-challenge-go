@@ -2,7 +2,7 @@
 
 Solução em desenvolvimento para o [desafio de processamento distribuído de apostas](https://github.com/junglegaming/backend-challenge-go).
 
-**Estado: Fase 0 concluída; Fase 1 iniciada com `Money`.** Existe um servidor HTTP com Uber Fx, configuração validada, logs JSON, liveness e shutdown, além do tipo monetário exato e seus testes. Ainda não há carteiras, operações financeiras, autenticação, PostgreSQL, SQS ou readiness. O acompanhamento está em [PLANO_SISTEMA_JUNGLE_GO.md](PLANO_SISTEMA_JUNGLE_GO.md).
+**Estado: Fase 0 concluída; Fase 1 com `Money` e `Wallet`.** Existe um servidor HTTP com Uber Fx, configuração validada, logs JSON, liveness e shutdown, além dos tipos de domínio monetário e carteira com testes. Ainda não há endpoints de negócio, persistência de carteiras, processamento de apostas, autenticação, PostgreSQL, SQS ou readiness. O acompanhamento está em [PLANO_SISTEMA_JUNGLE_GO.md](PLANO_SISTEMA_JUNGLE_GO.md).
 
 ## Executar localmente
 
@@ -49,7 +49,7 @@ make fmt          # gofmt
 make build        # bin/server
 ```
 
-Os testes atuais verificam configuração, contrato de liveness, composição Fx, porta ocupada, liberação do listener, conclusão de requisições durante shutdown e invariantes de `Money`. Não são testes de integração financeira nem substituem os cenários obrigatórios com infraestrutura real.
+Os testes atuais verificam configuração, contrato de liveness, composição Fx, porta ocupada, liberação do listener, conclusão de requisições durante shutdown e invariantes de `Money` e `Wallet`. Não são testes de integração financeira nem substituem os cenários obrigatórios com infraestrutura real.
 
 Para exercitar parsing e aritmética monetária com entradas geradas automaticamente:
 
@@ -57,9 +57,13 @@ Para exercitar parsing e aritmética monetária com entradas geradas automaticam
 go test ./internal/domain/money -cover
 go test ./internal/domain/money -run '^$' -fuzz '^FuzzArithmetic$' -fuzztime=10s -parallel=2
 go test ./internal/domain/money -run '^$' -fuzz '^FuzzParseDecimal$' -fuzztime=10s -parallel=2
+go test ./internal/domain/wallet -cover
+go test ./internal/domain/wallet -run '^$' -fuzz '^FuzzMovementSequence$' -fuzztime=10s -parallel=2
 ```
 
 `Money` usa centavos em `int64` e recebe valores externos como `{"amount":"25.90","currency":"BRL"}`. As regras, limites e erros estão em [ARCHITECTURE.md](ARCHITECTURE.md#money--primeiro-incremento-da-fase-1).
+
+`Wallet` mantém identidade, jogador, saldo, versão e timestamps em campos privados. Criação inicia na versão 1; reidratação preserva o estado persistido; crédito e débito validam moeda e limites antes de alterar o agregado. Rejeições e valores zero preservam saldo, versão e horário de atualização. As garantias entre processos e a gravação do ledger serão implementadas com PostgreSQL.
 
 ## Docker
 
@@ -84,11 +88,12 @@ cmd/server/                 entrada do processo
 internal/bootstrap/        configuração, composição Fx e lifecycle
 internal/adapters/http/    servidor e contrato HTTP
 internal/domain/money/     valor monetário exato e testes
+internal/domain/wallet/    agregado de carteira e testes
 docs/reference/            snapshot do enunciado e procedência
 references/                clone local do desafio (ignorado pelo Git)
 ```
 
-As decisões e limites estão em [ARCHITECTURE.md](ARCHITECTURE.md). O próximo incremento é `internal/domain/wallet`: criação e reidratação separadas, saldo não negativo, débito/crédito e versão. As demais pastas serão criadas quando tiverem implementação.
+As decisões e limites estão em [ARCHITECTURE.md](ARCHITECTURE.md). O próximo incremento é `internal/domain/wagering`: transação, estados e políticas para os seis tipos de operação. As demais pastas serão criadas quando tiverem implementação.
 
 O módulo e o remoto `origin` usam o repositório [hendelsantos/jungle-backend-challenge-go](https://github.com/hendelsantos/jungle-backend-challenge-go).
 

@@ -2,7 +2,10 @@ module github.com/hendelsantos/jungle-backend-challenge-go
 
 go 1.27.2
 
-require go.uber.org/fx v1.24.0
+require (
+	github.com/google/uuid v1.6.0
+	go.uber.org/fx v1.24.0
+)
 
 require (
 	go.uber.org/dig v1.19.0 // indirect
