@@ -36,7 +36,7 @@ func newHTTPFixture(t *testing.T) *httpFixture {
 	if issuer == "" {
 		t.Skip("TEST_OIDC_ISSUER is not set: real Keycloak is required")
 	}
-	pool := testsupport.PostgresPoolOrSkip(t)
+	pool := testsupport.IsolatedPostgresPool(t)
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -45,7 +45,7 @@ func newHTTPFixture(t *testing.T) *httpFixture {
 	listener.Close()
 	t.Setenv("HTTP_ADDR", address)
 	t.Setenv("LOG_LEVEL", "error")
-	t.Setenv("DATABASE_URL", os.Getenv("TEST_DATABASE_URL"))
+	t.Setenv("DATABASE_URL", pool.Config().ConnString())
 	t.Setenv("OIDC_ISSUER", issuer)
 	t.Setenv("OIDC_AUDIENCE", "jungle-api")
 	app := bootstrap.New()

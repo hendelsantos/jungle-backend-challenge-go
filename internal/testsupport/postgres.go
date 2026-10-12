@@ -8,9 +8,12 @@ package testsupport
 import (
 	"context"
 	"fmt"
+	"github.com/google/uuid"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -71,7 +74,7 @@ func applyMigrations(pool *pgxpool.Pool) error {
 	}
 
 	var applied *string
-	if err := tx.QueryRow(ctx, "SELECT to_regclass('public.wallets')").Scan(&applied); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT to_regclass('wallets')").Scan(&applied); err != nil {
 		return fmt.Errorf("check existing schema: %w", err)
 	}
 	if applied == nil {
@@ -108,4 +111,48 @@ func applyMigrationFiles(ctx context.Context, tx pgx.Tx) error {
 		}
 	}
 	return nil
+}
+
+// IsolatedPostgresPool gives publishing tests their own schema. A publisher
+// drains the entire committed outbox, so unique row IDs alone cannot isolate
+// tests targeting different SQS queues in the same database.
+func IsolatedPostgresPool(t testing.TB) *pgxpool.Pool {
+	t.Helper()
+	admin := PostgresPoolOrSkip(t)
+	schema := "test_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	quoted := pgx.Identifier{schema}.Sanitize()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if _, err := admin.Exec(ctx, "CREATE SCHEMA "+quoted); err != nil {
+		t.Fatal(err)
+	}
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
+		parsed, err := url.Parse(dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		query := parsed.Query()
+		query.Set("search_path", schema)
+		parsed.RawQuery = query.Encode()
+		dsn = parsed.String()
+	} else {
+		dsn += " search_path=" + schema
+	}
+	isolated, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		isolated.Close()
+		cleanup, stop := context.WithTimeout(context.Background(), 10*time.Second)
+		defer stop()
+		if _, err := admin.Exec(cleanup, "DROP SCHEMA "+quoted+" CASCADE"); err != nil {
+			t.Errorf("cleanup isolated schema: %v", err)
+		}
+	})
+	if err := applyMigrations(isolated); err != nil {
+		t.Fatal(err)
+	}
+	return isolated
 }

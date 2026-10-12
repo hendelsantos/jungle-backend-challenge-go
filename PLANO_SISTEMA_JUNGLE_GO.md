@@ -4,7 +4,7 @@
 > **Desafio:** Processamento Distribuído de Apostas em Go  
 > **Origem:** <https://github.com/junglegaming/backend-challenge-go>  
 > **Data do planejamento:** 12/10/2026  
-> **Estado:** Fases 0, 1 e 2 concluídas; Fases 3 e 4 concluídas: `ProcessWager`, endpoints financeiros autenticados por OIDC/Keycloak verificados com IdP e PostgreSQL reais, readiness com ping do banco e worker distribuído de referências pendentes (`SKIP LOCKED`, backoff, TTL) verificado com PostgreSQL real. Migrations verificadas com trigger/CHECK automatizados, `pgx` (pool + `UnitOfWork`), abertura atômica, leitura de carteira, ledger com cursor e reconciliação em snapshot. Validações e progresso na seção 13. Runner de migrations, usuários de migração/runtime, SQS/inbox/publisher e Compose de entrega pendentes (Fases 5–6).
+> **Estado:** Fases 0, 1 e 2 concluídas; Fases 3 e 4 concluídas: `ProcessWager`, endpoints financeiros autenticados por OIDC/Keycloak verificados com IdP e PostgreSQL reais, readiness com ping do banco e worker distribuído de referências pendentes (`SKIP LOCKED`, backoff, TTL) verificado com PostgreSQL real. Migrations verificadas com trigger/CHECK automatizados, `pgx` (pool + `UnitOfWork`), abertura atômica, leitura de carteira, ledger com cursor e reconciliação em snapshot. Validações e progresso na seção 13. Fase 5 com consumidor SQS/inbox e publisher da outbox com claim/lease, backoff, republicação com mesmo `eventId`, dois publishers e falha publish/ack verificados com LocalStack e PostgreSQL reais. Compose de entrega e três processos pendentes (Fase 6).
 
 ---
 
@@ -592,7 +592,7 @@ Evitar `walletId`, `playerId`, `providerId` dinâmicos como labels de alta cardi
 - [ ] Testar inbox com mesmo `messageId` e hash igual; reentrega com hash diferente detectada.
 - [ ] Testar processamento da mesma transação via HTTP e SQS sem novo movimento.
 - [ ] Testar inbox/outbox e comunicação real com SQS, redrive para DLQ, eventos tipados.
-- [ ] Testar outbox com dois publishers, lease abandonado e evento com mesmo ID republicado.
+- [x] Testar outbox com dois publishers, lease abandonado e evento com mesmo ID republicado (integração real com LocalStack e schema isolado; failpoint determinístico para o crash).
 - [ ] Testar `PENDING_REFERENCE` após reinicialização; chegada posterior e expiração.
 - [ ] Testar Fx startup/shutdown (workers encerrando corretamente).
 
@@ -603,7 +603,7 @@ Evitar `walletId`, `playerId`, `providerId` dinâmicos como labels de alta cardi
 - [x] **Teste C:** carteiras distintas processadas simultaneamente sem lock global.
 - [ ] **Teste D:** repetir testes de concorrência com **pelo menos 3 processos independentes**, cada um com seu pool de conexão.
 - [ ] **Teste E:** matar consumidor após commit e antes de `DeleteMessage`; reentrega não duplica.
-- [ ] **Teste F:** matar publisher depois de SQS aceitar o evento e antes de marcar publicado; replay mantém `eventId`.
+- [x] **Teste F:** matar publisher depois de SQS aceitar o evento e antes de marcar publicado; replay mantém `eventId` (simulação determinística do crash entre claim e ack, com recuperação e republicação do mesmo `eventId` verificadas com LocalStack real; kill literal de processo fica para a Fase 6).
 - [ ] **Teste G:** refund/rollback chega antes da referência; depois resolver ou rejeitar após TTL.
 - [ ] **Teste H:** reiniciar todas as instâncias; resultado idempotente, pendências e finanças continuam íntegros.
 - [ ] **Teste I:** concorrer HTTP/SQS pelo mesmo external ID/key; um único resultado persistido.
@@ -932,9 +932,10 @@ SQS/inbox/consumidor com LocalStack (Fase 5).
 - [x] LocalStack com entrada FIFO, DLQ, redrive, fila de eventos.
 - [x] Consumidor SQS com inbox e UnitOfWork compartilhada.
 - [x] `DeleteMessage` somente após commit; retry e erros permanentes.
-- [ ] Publisher da outbox com concorrência, lease/backoff e event IDs estáveis.
+- [x] Publisher da outbox com concorrência, lease/backoff e event IDs estáveis.
 - [x] Testar cross-channel HTTP/SQS e falha injetada após commit com broker real.
-- [ ] Testar interrupção literal do consumidor e falha entre publish/ack.
+- [x] Falha entre publicação e confirmação (Teste F) com failpoint determinístico e broker real; republicação mantém `eventId`.
+- [ ] Testar interrupção literal do consumidor e do publisher (Testes E/F em processos mortos de verdade) na Fase 6.
 
 **Pronto quando:** todas as garantias de at-least-once e recuperação passam nos containers reais.
 
@@ -1073,3 +1074,38 @@ limites detalhados no README, arquitetura e matriz de conformidade.
 
 Próximo incremento: publisher da outbox (claim/lease, backoff, eventos estáveis,
 dois publishers e falhas entre publish/ack). O projeto ainda não está concluído.
+
+### Fase 5, incremento 2 — publisher da outbox (12/10/2026)
+
+Concluída a publicação pós-commit. O comando `PublishNext`
+(`internal/application/command/publish_outbox.go`) reivindica exatamente um evento
+por vez: claim `FOR UPDATE SKIP LOCKED` com `clock_timestamp()` (sem relógio de
+host) incrementa `attempts` e grava lease pareado `leased_by`/`leased_until`
+(token de claim, não de processo — lease vencido não pode confirmar nem
+reagendar); a chamada de rede ao SQS ocorre **sem transação nem lock de linha
+abertos**; `MarkPublished` confirma `published_at` e `ScheduleRetry` grava
+`last_error` + `next_attempt_at` com backoff exponencial 1s→5min, ambas
+condicionadas ao token. Falha conhecida é liberada com cleanup limitado mesmo
+após shutdown/timeout (`context.WithoutCancel`), e o worker cancela o I/O sem
+abandonar o lease. Payload é o snapshot imutável do banco: republicação reenvia
+o mesmo `eventId` (at-least-once; deduplicação do evento é responsabilidade do
+consumidor, além da janela FIFO). Worker drena até 50 claims por tick com
+cancelamento observável; métricas de processo (`jungle_outbox_*`) expostas em
+`/metrics`, com gauges de pendência/atraso consultados no PostgreSQL (query
+falha vira 503, nunca atraso falso). Bootstrap registra worker e métricas no
+módulo messaging.
+
+Verificações: `gofmt`, `go vet ./...`, `go vet -tags=integration ./...`,
+`go test ./...` e `go test -race ./...` limpos; integração com PostgreSQL 17 e
+LocalStack reais e `-race`: claim exclusivo com incremento de tentativas, ack
+com token alheio vira `ErrOutboxLeaseLost`, ack próprio publica e zera pendência,
+lease abandonado é recuperado com `attempts=2` e não pode ser liberado pelo
+token antigo, reschedule grava `PUBLISH_FAILED` e respeita o backoff; end-to-end
+com fila FIFO real: evento comprometido chega com corpo idêntico ao snapshot,
+`MessageDeduplicationId=eventId` e `MessageGroupId=aggregateId`, crash entre
+envio e confirmação é recuperado com o mesmo `eventId`/payload (FIFO suprime a
+repetição na janela de deduplicação; identidade comprovada), quatro publishers
+concorrentes entregam dois eventos uma única vez cada. Filas e schema isolados
+por teste (`IsolatedPostgresPool`). Pendências: kill literal de processos (Testes
+E/F literais), Compose de entrega e três processos (Fase 6). O projeto ainda não
+está concluído.

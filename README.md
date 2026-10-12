@@ -2,9 +2,9 @@
 
 Solução em desenvolvimento para o [desafio de processamento distribuído de apostas](https://github.com/junglegaming/backend-challenge-go).
 
-**Estado: Fases 0–4 implementadas; Fase 5 com consumidor SQS/inbox e LocalStack. Publisher da outbox ainda pendente.** `ProcessWager` trata BET, WIN, LOSS, REFUND e ROLLBACK com lock por carteira, idempotência persistente e gravação de saldo, transação, ledger e outbox no mesmo commit. Os contratos HTTP oficiais estão expostos com autenticação OIDC (`client_credentials`), isolamento entre provedores e operações internas restritas; `GET /health/ready` verifica PostgreSQL e, quando configurado, SQS. Operações com referência ausente ficam `PENDING_REFERENCE` e um worker distribuído as retoma com backoff exponencial e TTL, concluindo, reagendando ou rejeitando com `REFERENCE_NOT_FOUND`.
+**Estado: Fases 0–4 implementadas; Fase 5 com consumidor SQS/inbox e publisher da outbox com LocalStack.** `ProcessWager` trata BET, WIN, LOSS, REFUND e ROLLBACK com lock por carteira, idempotência persistente e gravação de saldo, transação, ledger e outbox no mesmo commit. Os contratos HTTP oficiais estão expostos com autenticação OIDC (`client_credentials`), isolamento entre provedores e operações internas restritas; `GET /health/ready` verifica PostgreSQL e, quando configurado, SQS. Operações com referência ausente ficam `PENDING_REFERENCE` e um worker distribuído as retoma com backoff exponencial e TTL, concluindo, reagendando ou rejeitando com `REFERENCE_NOT_FOUND`. Eventos comprometidos são publicados pós-commit na fila de eventos por um publisher com claim/lease, backoff e republicação com mesmo `eventId`.
 
-Ainda faltam publisher da outbox, Compose de entrega completo, métricas e a demonstração com três processos independentes. O acompanhamento está em [PLANO_SISTEMA_JUNGLE_GO.md](PLANO_SISTEMA_JUNGLE_GO.md). Prazo interno: **14/10/2026**.
+Ainda faltam Compose de entrega completo, métricas financeiras restantes e a demonstração com três processos independentes. O acompanhamento está em [PLANO_SISTEMA_JUNGLE_GO.md](PLANO_SISTEMA_JUNGLE_GO.md). Prazo interno: **14/10/2026**.
 
 A [matriz de conformidade](docs/CONFORMIDADE_DESAFIO.md) relaciona as exigências oficiais à implementação, aos testes e às pendências. O README oficial prevalece sobre o plano interno; a entrega só estará concluída com os requisitos obrigatórios demonstrados no ambiente exigido.
 
@@ -179,7 +179,7 @@ go test ./internal/domain/wagering -run '^$' -fuzz '^FuzzBetRefundRollback$' -fu
 
 `WalletLedgerEntry` é um tipo-valor imutável com um lançamento por movimentação efetiva: direção, quantia positiva, saldo anterior e posterior consistentes (`balanceAfter = balanceBefore ± amount`) e timestamp em UTC. Não há setters; criação e reidratação coincidem. Unicidade `(wallet_id, transaction_id)` e proteção contra edição/exclusão são impostas pelo schema PostgreSQL.
 
-Os eventos tipados (`WagerTransactionProcessed`, `WagerTransactionRejected`, `WalletBalanceChanged`, `WagerTransactionPendingReference`) são envelopes imutáveis com `eventId`, `eventType`, `aggregateId` derivado dos dados, `correlationId`, `causationId` opcional, `occurredAt` em UTC, `version` por tipo e payload tipado; `MarshalJSON` fixa o contrato do payload da outbox com dinheiro em string decimal. A gravação na `outbox_events` é atômica com as operações financeiras; a publicação pós-commit via SQS ainda será implementada.
+Os eventos tipados (`WagerTransactionProcessed`, `WagerTransactionRejected`, `WalletBalanceChanged`, `WagerTransactionPendingReference`) são envelopes imutáveis com `eventId`, `eventType`, `aggregateId` derivado dos dados, `correlationId`, `causationId` opcional, `occurredAt` em UTC, `version` por tipo e payload tipado; `MarshalJSON` fixa o contrato do payload da outbox com dinheiro em string decimal. A gravação na `outbox_events` é atômica com as operações financeiras; a publicação pós-commit na fila de eventos é detalhada no [ARCHITECTURE.md](ARCHITECTURE.md#outbox-publisher--fase-5-incremento-2).
 
 ## Worker de referências pendentes
 
@@ -244,7 +244,7 @@ docs/reference/                   snapshot do enunciado e procedência
 references/                       clone local do desafio (ignorado pelo Git)
 ```
 
-As decisões e limites estão em [ARCHITECTURE.md](ARCHITECTURE.md). O próximo incremento implementa o publisher da outbox com lease, retry e testes de falha entre publicação e confirmação. O consumidor SQS já chama o mesmo `ProcessWager` da API HTTP.
+As decisões e limites estão em [ARCHITECTURE.md](ARCHITECTURE.md). O publisher da outbox publica pós-commit com claim/lease, backoff e republicação com mesmo `eventId`, verificado com LocalStack e PostgreSQL reais; o próximo incremento é o Compose de entrega e a demonstração com três processos. O consumidor SQS já chama o mesmo `ProcessWager` da API HTTP.
 
 O módulo e o remoto `origin` usam o repositório [hendelsantos/jungle-backend-challenge-go](https://github.com/hendelsantos/jungle-backend-challenge-go).
 
@@ -369,4 +369,34 @@ filas de desenvolvimento. Verificam HTTP+SQS com IdP real, redelivery, rollback
 por erro SQL na inbox, commit confirmado com resposta perdida, rejeição terminal,
 conflitos, autenticação, DLQ por três tentativas, readiness e shutdown com rollback.
 Injeção de falhas na fronteira do commit **não equivale a matar/reiniciar processos**.
-Publisher, interrupções reais e três processos continuam pendentes.
+Interrupções literais e três processos continuam pendentes (Fase 6).
+
+## Outbox publisher — segundo incremento da Fase 5
+
+Eventos comprometidos no mesmo commit financeiro são publicados na
+`wager-events.fifo` por um worker em loop de 1s que reivindica um evento por vez:
+
+- **Claim** `FOR UPDATE SKIP LOCKED` com `clock_timestamp()` (tempo do banco,
+  sem relógio de host) e lease pareado `leased_by`/`leased_until`; `attempts`
+  incrementa. O token do claim identifica a reivindicação, não o processo.
+- **Envio sem transação aberta:** a chamada SQS ocorre entre duas escritas SQL
+  curtas; nenhum lock de linha fica aberto durante I/O de rede.
+- **Confirmação condicionada ao token:** `published_at` só grava com o token
+  dono do lease; token vencido vira `ErrOutboxLeaseLost` e o lease expira, outra
+  instância assume o evento (`attempts` sobe a 2).
+- **Falha de publicação:** backoff exponencial 1s→5min gravado em
+  `next_attempt_at` com `last_error`; o evento nunca é descartado.
+- **Payload imutável:** o corpo enviado é o snapshot `payload_json` do banco;
+  a republicação usa o mesmo `eventId`. Entrega é at-least-once — o consumidor
+  do evento deve deduplicar pelo `eventId` além da janela FIFO.
+- **Métricas:** `/metrics` expõe `jungle_outbox_*` (pendência, atraso, claims,
+  publicações, falhas, retries, leases perdidas); gauges consultam o PostgreSQL
+  e falha de consulta vira 503, nunca atraso falso.
+
+Evidência de integração (LocalStack e PostgreSQL reais, filas e schema isolados
+por teste): entrega com corpo/`MessageDeduplicationId`/`MessageGroupId` corretos;
+crash simulado entre envio e confirmação recuperado com o mesmo `eventId`
+(a janela de deduplicação FIFO suprime a repetição); quatro publishers
+concorrentes entregam dois eventos uma única vez cada; lease abandonado
+recuperado sem interferência do token antigo. Kill literal de processo e três
+instâncias seguem pendentes (Fase 6).

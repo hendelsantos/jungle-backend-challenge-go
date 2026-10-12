@@ -4,7 +4,7 @@
 
 O [enunciado oficial](docs/reference/README_DESAFIO.md) define os requisitos. A [matriz de conformidade](docs/CONFORMIDADE_DESAFIO.md) separa as garantias já demonstradas das pendências de integração e entrega; decisões arquiteturais devem respeitar esse contrato.
 
-As Fases 0 e 1 estão concluídas: `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e os eventos tipados de domínio, com invariantes revisadas e verificadas. A Fase 2 está concluída: schema, pool, transações, abertura, leituras e reconciliação. A Fase 3 tem `ProcessWager` e a API HTTP autenticada por OIDC/Keycloak com evidência real. A Fase 4 está implementada: worker distribuído de referências pendentes com claim `SKIP LOCKED`, backoff e TTL (ver a seção dedicada). A Fase 5 já tem consumidor SQS/inbox, assinatura por provedor e integração LocalStack; o publisher ainda falta. A direção é uma arquitetura hexagonal enxuta: domínio independente, casos de uso compartilhados por HTTP e SQS, adaptadores para entrada e persistência, e composição centralizada.
+As Fases 0 e 1 estão concluídas: `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e os eventos tipados de domínio, com invariantes revisadas e verificadas. A Fase 2 está concluída: schema, pool, transações, abertura, leituras e reconciliação. A Fase 3 tem `ProcessWager` e a API HTTP autenticada por OIDC/Keycloak com evidência real. A Fase 4 está implementada: worker distribuído de referências pendentes com claim `SKIP LOCKED`, backoff e TTL (ver a seção dedicada). A Fase 5 já tem consumidor SQS/inbox, assinatura por provedor e integração LocalStack, e o publisher da outbox publica pós-commit com claim/lease, backoff e republicação com mesmo `eventId` (ver a seção dedicada). A direção é uma arquitetura hexagonal enxuta: domínio independente, casos de uso compartilhados por HTTP e SQS, adaptadores para entrada e persistência, e composição centralizada.
 
 Dependências planejadas:
 
@@ -274,10 +274,60 @@ No futuro consumidor SQS, a UnitOfWork externa da inbox será dona do commit e d
 
 ## Trabalho ainda pendente
 
-- Outbox publisher com lease e testes de falhas entre commit, publicação e confirmação.
-- Runner de migrations, Compose de entrega reproduzível (aplicação + IdP + PostgreSQL + filas), métricas e demonstração com três processos independentes.
+- Kill literal de processos nos pontos críticos (Testes E/F) e reinício com pendências retomadas.
+- Runner de migrations, Compose de entrega reproduzível (aplicação + IdP + PostgreSQL + filas), métricas financeiras restantes e demonstração com três processos independentes.
 
 As seções anteriores registram a evolução por incremento; as garantias atuais do processamento estão descritas acima. A entrega completa continua pendente.
+
+
+## Outbox publisher — Fase 5, incremento 2
+
+**Fronteira e composição.** `PublishOutboxDeps` (`internal/application/command`) orquestra
+claim, envio e confirmação; `internal/workers.OutboxWorker` drena até 50 claims por tick
+com cancelamento observável e passa a função tipada (method value) — sem interface
+artificial. `internal/adapters/postgres.OutboxDeliveryRepository` executa cada operação
+SQL por si só e `internal/adapters/sqs.EventPublisher` publica na fila de eventos; o
+comando não conhece nem `pgx` nem o SDK AWS. Bootstrap compõe tudo no módulo messaging.
+
+**Claim.** `INSERT ... RETURNING` invertido em CTE: `SELECT ... FOR UPDATE SKIP LOCKED`
+sobre eventos `published_at IS NULL` e elegíveis (`next_attempt_at <= clock_timestamp()`,
+lease ausente ou vencido), seguido de `UPDATE` que grava `leased_by`, `leased_until` e
+incrementa `attempts` (saturado em SQL int max). `clock_timestamp()` evita desvio de
+relógio entre hosts. O token (`leased_by`) identifica **o claim, não o processo**: um
+lease vencido não pode confirmar nem reagendar, mesmo que o mesmo processo o readquira
+depois — Republicação só vem de um claim novo e legítimo.
+
+**Envio e confirmação.** Entre o claim e o ack **não há transação nem lock de linha
+abertos**: a chamada de rede SQS usa `MessageDeduplicationId=eventId` e
+`MessageGroupId=aggregateId` sobre o payload `payload_json` do banco (snapshot imutável;
+nenhum evento é regenerado em retry). `MarkPublished` grava `published_at` condicionado
+ao token e ao lease vigente; falha na confirmação é recuperável pelo vencimento do lease.
+`ScheduleRetry` grava `next_attempt_at` com backoff exponencial 1s→5min (expoente
+limitado, sem overflow de `time.Duration`) e `last_error`, sempre condicionado ao token.
+O evento nunca é descartado: tentativas são ilimitadas com atraso limitado.
+
+**At-least-once explícito.** Falha após envio e antes do ack deixa o evento recuperável:
+a próxima instância reenvia o **mesmo `eventId` e payload**. A deduplicação FIFO do broker
+suprime a repetição na janela, mas a garantia direcionada ao consumidor externo é
+deduplicar pelo `eventId` além da janela — a entrega nunca é prometida exatamente uma vez.
+No shutdown, cancelamento interrompe I/O e o comando libera leases conhecidos com cleanup
+limitado (`context.WithoutCancel`), para que trabalho conhecido não fique preso até o
+vencimento.
+
+**Métricas.** `/metrics` expõe contadores por processo (`jungle_outbox_claimed_total`,
+`published_total`, `publish_failures_total`, `confirmation_failures_total`,
+`retries_total`, `lease_lost_total`) e gauges consultados no PostgreSQL na hora
+(`jungle_outbox_pending`, `jungle_outbox_oldest_age_seconds`); falha de consulta responde
+503, nunca atraso falso. Sem labels de alta cardinalidade.
+
+**Evidências.** PostgreSQL 17 e LocalStack reais, `-race`, filas e schema isolados por
+teste: claim exclusivo com incremento; ack/reschedule com token alheio →
+`ErrOutboxLeaseLost`; lease abandonado recuperado com `attempts=2` e liberado apenas pelo
+token novo; reschedule grava `PUBLISH_FAILED` e respeita backoff; entrega com corpo
+idêntico ao snapshot, dedup `eventId` e grupo `aggregateId`; crash simulado entre envio e
+confirmação recuperado com o mesmo `eventId` (janela FIFO suprime a repetição);
+quatro publishers concorrentes entregam dois eventos uma única vez cada. Kill literal de
+processo e três instâncias permanecem para a Fase 6.
 
 
 ## Entrada SQS/inbox — Fase 5, incremento 1
