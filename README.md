@@ -2,7 +2,7 @@
 
 Solução em desenvolvimento para o [desafio de processamento distribuído de apostas](https://github.com/junglegaming/backend-challenge-go).
 
-**Estado: Fases 0 e 1 concluídas.** Existe um servidor HTTP com Uber Fx, configuração validada, logs JSON, liveness e shutdown, além do domínio financeiro completo com testes: `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e eventos tipados. Ainda não há endpoints de negócio, persistência financeira (migrations, tabelas, unicidade e trigger append-only), autenticação, PostgreSQL, SQS ou readiness. O acompanhamento está em [PLANO_SISTEMA_JUNGLE_GO.md](PLANO_SISTEMA_JUNGLE_GO.md).
+**Estado: Fases 0 e 1 concluídas; Fase 2 iniciada.** Existe um servidor HTTP com Uber Fx, configuração validada, logs JSON, liveness e shutdown, além do domínio financeiro completo com testes: `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e eventos tipados. As migrations versionadas do schema financeiro (`wallets`, `wager_transactions`, `wallet_ledger_entries`, `inbox_messages`, `outbox_events`) foram criadas e verificadas em PostgreSQL real. Ainda não há endpoints de negócio, acesso da aplicação ao PostgreSQL (`pgx`, repositórios, `UnitOfWork`), runner de migrations integrado, autenticação, SQS ou readiness. O acompanhamento está em [PLANO_SISTEMA_JUNGLE_GO.md](PLANO_SISTEMA_JUNGLE_GO.md).
 
 ## Executar localmente
 
@@ -100,12 +100,13 @@ internal/domain/wallet/    agregado de carteira e testes
 internal/domain/wagering/  transações, estados e políticas
 internal/domain/ledger/    lançamento imutável do ledger e testes
 internal/domain/events/   eventos tipados de domínio e testes
+migrations/                schema versionado up/down (golang-migrate)
 docs/adr/                  decisões de arquitetura
 docs/reference/            snapshot do enunciado e procedência
 references/                clone local do desafio (ignorado pelo Git)
 ```
 
-As decisões e limites estão em [ARCHITECTURE.md](ARCHITECTURE.md). A Fase 1 está concluída; o próximo incremento são as migrations PostgreSQL da Fase 2 (`wallets`, `wager_transactions`, `wallet_ledger_entries`, `inbox_messages`, `outbox_events`). As demais pastas serão criadas quando tiverem implementação.
+As decisões e limites estão em [ARCHITECTURE.md](ARCHITECTURE.md). O próximo incremento é a integração de `pgx` com pool e `UnitOfWork`; o runner de migrations (golang-migrate), alvos de Makefile e o Compose com PostgreSQL, Keycloak e LocalStack vêm nas etapas correspondentes. As demais pastas serão criadas quando tiverem implementação.
 
 O módulo e o remoto `origin` usam o repositório [hendelsantos/jungle-backend-challenge-go](https://github.com/hendelsantos/jungle-backend-challenge-go).
 

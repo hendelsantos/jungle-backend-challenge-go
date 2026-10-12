@@ -4,7 +4,7 @@
 > **Desafio:** Processamento Distribuído de Apostas em Go  
 > **Origem:** <https://github.com/junglegaming/backend-challenge-go>  
 > **Data do planejamento:** 12/10/2026  
-> **Estado:** Fases 0 e 1 concluídas (`Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry`, eventos tipados e revisão de invariantes). Validações e progresso registrados na seção 13. Fases 2–6 pendentes; próximo incremento: migrations PostgreSQL.
+> **Estado:** Fases 0 e 1 concluídas; Fase 2 iniciada (migrations de schema criadas e verificadas em PostgreSQL real). Validações e progresso registrados na seção 13. Repositórios/`UnitOfWork`, Compose e demais itens da Fase 2, além das Fases 3–6, pendentes.
 
 ---
 
@@ -660,9 +660,7 @@ O próximo incremento é `Money`, conforme seção 16.3. Não há endpoints de n
 - [x] Criar ledger entry e eventos tipados sem dependência de infraestrutura.
 - [x] Revisar invariantes e rodar `go test -race ./...`.
 
-**Pronto quando:** todas as regras de negócio têm testes unitários e não usam SQL nem framework.
-
-**Incremento Money — 12/10/2026:** implementado em `internal/domain/money`, sem dependências
+**Pronto quando:** todas as regras de negócio têm testes unitários e não usam SQL nem framework.**Incremento Money — 12/10/2026:** implementado em `internal/domain/money`, sem dependências
 de infraestrutura. Inclui construtores, parsing decimal, aritmética protegida, comparação,
 formatação e JSON com valores em string. `make check` passou (`go vet`, testes e `-race`);
 `go test ./internal/domain/money -cover` registrou 100% de cobertura de instruções.
@@ -717,13 +715,37 @@ incremento inicia a Fase 2 com as migrations de `wallets`, `wager_transactions`,
 `wallet_ledger_entries`, `inbox_messages` e `outbox_events`.
 
 ### Fase 2 — Persistência transacional e abertura
-- [ ] Criar migrations: wallets, transactions, ledger, inbox, outbox.
+- [x] Criar migrations: wallets, transactions, ledger, inbox, outbox.
 - [ ] Definir repositórios e `UnitOfWork` baseada em `pgx.Tx`.
 - [ ] Criar abertura positiva/zero de carteira atômica, com `OPENING` quando exigido.
 - [ ] Testar `UNIQUE`, `CHECK`, trigger imutável e rollback de erros.
 - [ ] Criar reconciliação em snapshot e leitura de ledger cursor.
 
 **Pronto quando:** schema protege invariantes e abertura/reconciliação passam com PostgreSQL real.
+
+**Incremento migrations — 12/10/2026:** criadas as migrations versionadas `up`/`down`
+(convenção golang-migrate) em `migrations/`: `000001_create_wallets`,
+`000002_create_wager_transactions`, `000003_create_ledger` e `000004_create_inbox_outbox`.
+O schema materializa o PLANO §5.1: checks de saldo/versão/moeda e `UNIQUE(player_id, currency)`
+em `wallets`; máquina de estados coerente em `wager_transactions` (presença de
+`failure_code` equivalente a REJECTED/FAILED, par de resultado, pureza dos estados
+pendentes, PROCESSED com resultado, FAILED sem resultado, resultado de OPENING igual à
+quantia e versão 1), combinação interna/externa de metadados, formato do `payload_hash`,
+valor por kind, índices únicos parciais de idempotência `(provider_id, idempotency_key)` e
+`(provider_id, external_transaction_id)`, `UNIQUE(wallet_id) WHERE kind='OPENING'`,
+unicidade de compensação direta (ADR 0001) em `reference_transaction_id WHERE REFUND/ROLLBACK
+PROCESSED`, FK própria com proibição de autorreferência e índice do worker de referências;
+aritmética, positividade e unicidade `(wallet_id, transaction_id)` em `wallet_ledger_entries`
+com triggers `BEFORE UPDATE OR DELETE` e `BEFORE TRUNCATE` garantindo append-only;
+`PK(consumer_name, message_id)` na inbox e outbox com tipos válidos, lease pareado e índice
+parcial de pendentes. Verificação executada em container efêmero `postgres:17-alpine`:
+aplicação das quatro `up`, fluxo positivo completo (carteira BRL + USD, OPENING, BET, REFUND,
+ledger, inbox, outbox), 41 blocos de violação com asserção do nome exato da constraint
+(três casos com proteções sobrepostas aceitam qualquer uma delas) e reversão completa das
+quatro `down` deixando o schema vazio. O item "Testar UNIQUE, CHECK, trigger imutável..."
+permanece aberto até virar teste de integração Go com infraestrutura real, assim como a
+integração do runner (golang-migrate), alvos de Makefile, separação de usuários de
+migração/runtime e Compose. Próximo incremento: dependência `pgx`, pool e `UnitOfWork`.
 
 ### Fase 3 — OIDC, endpoints e operação síncrona
 - [ ] Provisionar Keycloak; validar tokens, issuer/audience e roles.

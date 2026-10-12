@@ -2,7 +2,7 @@
 
 ## Estado e direção
 
-As Fases 0 e 1 estão concluídas: `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e os eventos tipados de domínio, com invariantes revisadas e verificadas. A direção é uma arquitetura hexagonal enxuta: domínio independente, casos de uso compartilhados por HTTP e SQS, adaptadores para entrada e persistência, e composição centralizada. Precisão monetária, invariantes da carteira, políticas de aposta, lançamento de ledger e contrato de eventos estão implementadas em memória; as garantias transacionais e distribuídas ainda estão pendentes.
+As Fases 0 e 1 estão concluídas: `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e os eventos tipados de domínio, com invariantes revisadas e verificadas. A Fase 2 começou com o schema PostgreSQL versionado. A direção é uma arquitetura hexagonal enxuta: domínio independente, casos de uso compartilhados por HTTP e SQS, adaptadores para entrada e persistência, e composição centralizada. Precisão monetária, invariantes da carteira, políticas de aposta, lançamento de ledger e contrato de eventos estão implementadas em memória; as garantias transacionais e distribuídas ainda estão pendentes.
 
 Dependências planejadas:
 
@@ -147,6 +147,22 @@ A [ADR 0001](docs/adr/0001-compensacao-direta.md) define uma única compensaçã
 
 **Limites desta etapa:** eventos são construídos em memória pelo futuro caso de uso; a gravação na `outbox_events` no mesmo commit SQL, o publisher com lease/backoff e a publicação somente após commit continuam pendentes. Os testes unitários cobrem construtores, kinds por evento, invariante de saldo em `WalletBalanceChanged`, envelope inconsistente e contrato JSON; cobertura de instruções: 100,0% em `ledger` e 95,0% em `events` (restam marcadores de interface e ramos internos de defesa). Nada aqui substitui os testes de integração com PostgreSQL real.
 
+## Persistência — schema PostgreSQL (Fase 2, primeiro incremento)
+
+Quatro migrations `up`/`down` em `migrations/` seguem a convenção do golang-migrate (runner ainda não integrado). Cada decisão do domínio tem contraparte no schema, e cada restrição foi verificada em container efêmero `postgres:17-alpine` com asserção do nome exato da constraint violada.
+
+**Wallets:** `CHECK(balance_cents >= 0)`, `CHECK(version >= 1)`, moeda em lista explícita (`BRL`, `USD` — o schema aceita o que o domínio aceita; a restrição BRL-only da aplicação vem depois), `CHECK(updated_at >= created_at)` e índice único `(player_id, currency)`. Sem `DEFAULT` de horário: a aplicação fornece instantes UTC explícitos, coerente com os construtores do domínio.
+
+**Wager_transactions:** a máquina de estados do domínio está codificada em `CHECK`s independentes — presença de `failure_code` é equivalente lógica a `status IN ('REJECTED','FAILED')`; resultado sempre em par (`result_balance_cents`/`result_wallet_version`) não negativo; `PROCESSED` exige resultado; `FAILED` proíbe; estados pendentes são puros (sem resultado, código ou referência resolvida); `OPENING` processado exige resultado igual à quantia com versão 1. Metadados externos são todos obrigatórios e não vazios para kinds externos e todos nulos para `OPENING`; `payload_hash` segue `^[0-9a-f]{64}$`; valor por kind (`LOSS` zero, externos positivos, `OPENING` não negativo); referência externa obrigatória em `REFUND`/`ROLLBACK`, proibida em `BET`/`LOSS`/`OPENING`, opcional em `WIN`; `reference_transaction_id` tem FK própria e proibição de autorreferência. Idempotência durável por dois índices únicos parciais (`(provider_id, idempotency_key)` e `(provider_id, external_transaction_id)` sobre origem externa); `UNIQUE(wallet_id) WHERE kind='OPENING'` impede crédito inicial duplicado; `UNIQUE(reference_transaction_id) WHERE kind IN ('REFUND','ROLLBACK') AND status='PROCESSED'` materializa a ADR 0001 (uma única compensação direta bem-sucedida, seja REFUND ou ROLLBACK); índice parcial por `next_attempt_at` serve o worker de referências.
+
+**Ledger:** `UNIQUE(wallet_id, transaction_id)`, quantia positiva, saldos não negativos e `CHECK` aritmético por direção; soma além de `BIGINT` gera erro SQL no insert. Append-only por dois triggers: `BEFORE UPDATE OR DELETE` por linha e `BEFORE TRUNCATE` por statement, ambos levantando exceção. Isso bloqueia qualquer papel que não possa desabilitar triggers; a separação entre usuário de migração e usuário de runtime (sem `ALTER`/`DROP`/`TRUNCATE`/desabilitar trigger) vem com o ambiente Compose.
+
+**Inbox e outbox:** inbox com `PRIMARY KEY(consumer_name, message_id)` e `CHECK(completed_at >= received_at)`; a conclusão compartilhará a transação SQL do tratamento. Outbox com tipos de evento válidos, `attempts >= 0`, `next_attempt_at NOT NULL` (evento nasce elegível), lease pareado (`leased_by`/`leased_until` juntos ou ausentes), índice parcial de pendentes por `next_attempt_at` e índice por `(aggregate_id, occurred_at)`.
+
+**Verificação:** aplicação das quatro `up`, fluxo positivo completo e 41 blocos de violação (cada um afirma o nome da constraint que rejeitou), seguidos das quatro `down` deixando o schema vazio. Três casos têm proteções naturalmente sobrepostas (kind desconhecido também viola a regra de quantia; estado não terminal com código viola duas regras; direção desconhecida também viola a aritmética) e a asserção aceita qualquer uma delas — o PostgreSQL não garante ordem entre `CHECK`s.
+
+**Pendências:** runner golang-migrate com alvos de Makefile e Compose; usuários distintos de migração e runtime; testes de integração Go com PostgreSQL real (o item de testar constraints/trigger do plano exige automação, não só verificação manual); repositórios e `UnitOfWork` com `pgx`.
+
 ## Decisões previstas, ainda não implementadas
 
 O plano mestre detalha as escolhas que serão confirmadas com código e testes:
@@ -157,4 +173,4 @@ O plano mestre detalha as escolhas que serão confirmadas com código e testes:
 - Keycloak/OIDC, escopo por provedor e operações internas autorizadas.
 - SQS com inbox, outbox após commit e recuperação de publicação com IDs estáveis.
 
-Esses itens não estão concluídos. Migrations, ambiente Compose, endpoints de negócio, métricas e testes distribuídos serão acrescentados nas fases seguintes. A revisão final de invariantes da Fase 1 foi executada (verificação completa, cobertura por pacote, ausência de ponto flutuante e de dependências de infraestrutura no domínio, fuzzing sem falhas); o próximo incremento são as migrations PostgreSQL da Fase 2.
+Esses itens não estão concluídos. Migrations, ambiente Compose, endpoints de negócio, métricas e testes distribuídos serão acrescentados nas fases seguintes.
