@@ -7,16 +7,38 @@ import (
 )
 
 func TestLoadConfigDefaults(t *testing.T) {
-	for _, key := range []string{"HTTP_ADDR", "LOG_LEVEL"} {
+	for _, key := range []string{"HTTP_ADDR", "LOG_LEVEL", "DATABASE_URL"} {
 		t.Setenv(key, "") // Restore the caller's environment when the test finishes.
 		if err := os.Unsetenv(key); err != nil {
 			t.Fatal(err)
 		}
 	}
 	cfg, err := LoadConfig()
-	if err != nil || cfg.HTTPAddr != ":8080" || cfg.LogLevel != slog.LevelInfo {
+	if err != nil || cfg.HTTPAddr != ":8080" || cfg.LogLevel != slog.LevelInfo || cfg.DatabaseURL != "" {
 		t.Fatalf("unexpected defaults: %+v, %v", cfg, err)
 	}
+}
+
+func TestLoadConfigDatabaseURL(t *testing.T) {
+	t.Run("unset leaves database empty", func(t *testing.T) {
+		t.Setenv("DATABASE_URL", "")
+		if err := os.Unsetenv("DATABASE_URL"); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := LoadConfig()
+		if err != nil || cfg.DatabaseURL != "" {
+			t.Fatalf("unexpected database url: %+v, %v", cfg, err)
+		}
+	})
+	t.Run("set value is preserved verbatim", func(t *testing.T) {
+		// Validation of the connection string belongs to pgxpool.ParseConfig.
+		url := "postgres://user:secret@localhost:5432/jungle?sslmode=disable"
+		t.Setenv("DATABASE_URL", url)
+		cfg, err := LoadConfig()
+		if err != nil || cfg.DatabaseURL != url {
+			t.Fatalf("database url was not preserved: %+v, %v", cfg, err)
+		}
+	})
 }
 
 func TestLoadConfig(t *testing.T) {

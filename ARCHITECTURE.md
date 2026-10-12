@@ -2,7 +2,7 @@
 
 ## Estado e direção
 
-As Fases 0 e 1 estão concluídas: `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e os eventos tipados de domínio, com invariantes revisadas e verificadas. A Fase 2 começou com o schema PostgreSQL versionado. A direção é uma arquitetura hexagonal enxuta: domínio independente, casos de uso compartilhados por HTTP e SQS, adaptadores para entrada e persistência, e composição centralizada. Precisão monetária, invariantes da carteira, políticas de aposta, lançamento de ledger e contrato de eventos estão implementadas em memória; as garantias transacionais e distribuídas ainda estão pendentes.
+As Fases 0 e 1 estão concluídas: `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e os eventos tipados de domínio, com invariantes revisadas e verificadas. A Fase 2 está em progresso: schema PostgreSQL versionado e integração `pgx` (pool + `UnitOfWork`). A direção é uma arquitetura hexagonal enxuta: domínio independente, casos de uso compartilhados por HTTP e SQS, adaptadores para entrada e persistência, e composição centralizada.
 
 Dependências planejadas:
 
@@ -162,6 +162,17 @@ Quatro migrations `up`/`down` em `migrations/` seguem a convenção do golang-mi
 **Verificação:** aplicação das quatro `up`, fluxo positivo completo e 41 blocos de violação (cada um afirma o nome da constraint que rejeitou), seguidos das quatro `down` deixando o schema vazio. Três casos têm proteções naturalmente sobrepostas (kind desconhecido também viola a regra de quantia; estado não terminal com código viola duas regras; direção desconhecida também viola a aritmética) e a asserção aceita qualquer uma delas — o PostgreSQL não garante ordem entre `CHECK`s.
 
 **Pendências:** runner golang-migrate com alvos de Makefile e Compose; usuários distintos de migração e runtime; testes de integração Go com PostgreSQL real (o item de testar constraints/trigger do plano exige automação, não só verificação manual); repositórios e `UnitOfWork` com `pgx`.
+
+## pgx — pool e UnitOfWork (Fase 2, segundo incremento)
+
+`github.com/jackc/pgx/v5` (v5.11.0) com SQL explícito; `sqlc` e ORM ficam de fora. A primeira porta da aplicação vive em `internal/application/ports`: `UnitOfWork.WithinTx(ctx, fn)` — commit quando `fn` retorna nil, rollback em erro ou cancelamento, e **aninhamento que une à transação externa**. Um caso de uso e seus helpers compartilham sempre um commit; nenhuma função aninhada commita sozinha.
+
+**Implementação (`internal/adapters/postgres`):** a `pgx.Tx` ativa viaja no `context`; repositórios futuros deste pacote a obtêm por `TxFromContext`, sem vazar `pgx` pela aplicação. O rollback usa `context.WithoutCancel` (cancelamento não pode impedir a limpeza) e o erro original do caso de uso é preservado — `errors.Is` do chamador continua funcionando; falha de rollback é agregada com `errors.Join`. Asserção de compile-time amarra o adaptador à porta. O pool é construído sem conectar (primeira conexão é lazy); `pgxpool.ParseConfig` valida a URL (aceita scheme `postgres://` e DSN keyword/value) — valores inválidos derrubam a inicialização. Padrões fixos: `MaxConnLifetime` 30m, `MaxConnIdleTime` 5m, `HealthCheckPeriod` 1m; contagem de conexões segue o padrão do pgxpool até o Compose definir dimensionamento por réplica sem esgotar `max_connections`.
+
+**Composição:** `DATABASE_URL` é opcional nesta etapa — vazia, a aplicação sobe apenas com HTTP (não há endpoints de negócio); definida, o módulo `database` entra com ping de 5s no `OnStart` (banco inacessível impede o serviço de aceitar tráfego) e `Close` no `OnStop`. No Fx 1.24, `fx.New` executa os invokes na construção, então URL inválida falha já em `app.Err()`, antes de qualquer hook. O adaptador não importa Fx; hooks vivem no bootstrap, como no HTTP.
+
+**Testes:** unitários cobrem parsing/config e o gate do módulo; os transacionais (commit, rollback por erro, rollback por cancelamento, aninhado une, erro interno derruba o externo) exigem PostgreSQL real, usam build tag `integration` e pulam sem `TEST_DATABASE_URL` — nenhum mock substitui o banco. **Retry de deadlock** (`40P01`/`40001` com limite e jitter) fica para o incremento do `ProcessWager`, onde reexecutar o caso de uso é seguro; o `UnitOfWork` atual nunca reexecuta `fn` por conta própria.
+
 
 ## Decisões previstas, ainda não implementadas
 

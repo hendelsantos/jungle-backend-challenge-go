@@ -13,16 +13,20 @@ import (
 )
 
 func New() *fx.App {
-	return fx.New(
+	options := []fx.Option{
 		fx.Module("config", fx.Provide(LoadConfig)),
 		fx.Module("logging", fx.Provide(newLogger)),
 		fx.Module("http", fx.Provide(newHTTPServer), fx.Invoke(registerHTTP)),
 		fx.WithLogger(func(logger *slog.Logger) fxevent.Logger {
 			return &fxevent.SlogLogger{Logger: logger}
 		}),
-		fx.StartTimeout(15*time.Second),
-		fx.StopTimeout(15*time.Second),
-	)
+		fx.StartTimeout(15 * time.Second),
+		fx.StopTimeout(15 * time.Second),
+	}
+	if os.Getenv("DATABASE_URL") != "" {
+		options = append(options, databaseModule())
+	}
+	return fx.New(options...)
 }
 
 func newLogger(cfg Config) *slog.Logger {

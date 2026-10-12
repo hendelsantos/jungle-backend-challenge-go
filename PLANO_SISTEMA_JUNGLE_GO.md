@@ -4,7 +4,7 @@
 > **Desafio:** Processamento Distribuído de Apostas em Go  
 > **Origem:** <https://github.com/junglegaming/backend-challenge-go>  
 > **Data do planejamento:** 12/10/2026  
-> **Estado:** Fases 0 e 1 concluídas; Fase 2 iniciada (migrations de schema criadas e verificadas em PostgreSQL real). Validações e progresso registrados na seção 13. Repositórios/`UnitOfWork`, Compose e demais itens da Fase 2, além das Fases 3–6, pendentes.
+> **Estado:** Fases 0 e 1 concluídas; Fase 2 em progresso: migrations verificadas em PostgreSQL real e integração `pgx` (pool + `UnitOfWork`) testada contra banco real. Validações e progresso registrados na seção 13. Repositórios, abertura atômica, reconciliação e Compose pendentes, além das Fases 3–6.
 
 ---
 
@@ -746,6 +746,29 @@ quatro `down` deixando o schema vazio. O item "Testar UNIQUE, CHECK, trigger imu
 permanece aberto até virar teste de integração Go com infraestrutura real, assim como a
 integração do runner (golang-migrate), alvos de Makefile, separação de usuários de
 migração/runtime e Compose. Próximo incremento: dependência `pgx`, pool e `UnitOfWork`.
+
+**Incremento pool e UnitOfWork — 12/10/2026:** adicionada a dependência `github.com/jackc/pgx/v5`
+v5.11.0 (`pgxpool`, transações explícitas, SQL visível). O contrato da aplicação nasceu em
+`internal/application/ports`: `UnitOfWork.WithinTx(ctx, fn)` — commit quando `fn` retorna nil,
+rollback em erro/cancelamento e **aninhamento que une à transação externa** (um caso de uso,
+um commit). A implementação em `internal/adapters/postgres` carrega a `pgx.Tx` no `context`
+(`TxFromContext` para os futuros repositórios do mesmo pacote), faz rollback com
+`context.WithoutCancel` e preserva o erro original do caso de uso; asserção de compile-time
+garante a porta. O pool valida a URL via `pgxpool.ParseConfig` (aceita scheme e DSN
+keyword/value), é construído sem conectar (lazy) e fixa `MaxConnLifetime` 30m,
+`MaxConnIdleTime` 5m e `HealthCheckPeriod` 1m; contagem de conexões fica nos padrões do
+pgxpool até o Compose definir dimensionamento por réplica. Bootstrap: `DATABASE_URL`
+opcional nesta etapa (sem ela a aplicação sobe só com HTTP); módulo `database` condicional
+com ping de 5s no `OnStart` (falha antes de servir) e `Close` no `OnStop`; adaptador continua
+sem importar Fx. Descoberta registrada: no Fx 1.24, `fx.New` executa os invokes na construção,
+então URL inválida falha já em `app.Err()` — fail-fast melhor que o esperado. Verificações:
+`gofmt`, `go vet ./...`, `go test ./...`, `go test -race ./...` limpos; testes de integração
+com build tag `integration` (pulam sem `TEST_DATABASE_URL`, nunca usam mocks) executados
+contra `postgres:17-alpine` real: ping, commit persiste, rollback em erro, rollback em
+cancelamento de contexto, aninhado une e erro interno derruba o externo — todos PASS, também
+com `-race`. Retry de deadlock (40P01/40001) fica para o incremento do ProcessWager, onde
+reexecutar o caso de uso é seguro. Repositórios ficam para o incremento da abertura, seguindo
+a regra de não criar interfaces antes dos casos de uso.
 
 ### Fase 3 — OIDC, endpoints e operação síncrona
 - [ ] Provisionar Keycloak; validar tokens, issuer/audience e roles.

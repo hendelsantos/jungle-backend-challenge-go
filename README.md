@@ -2,7 +2,7 @@
 
 Solução em desenvolvimento para o [desafio de processamento distribuído de apostas](https://github.com/junglegaming/backend-challenge-go).
 
-**Estado: Fases 0 e 1 concluídas; Fase 2 iniciada.** Existe um servidor HTTP com Uber Fx, configuração validada, logs JSON, liveness e shutdown, além do domínio financeiro completo com testes: `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e eventos tipados. As migrations versionadas do schema financeiro (`wallets`, `wager_transactions`, `wallet_ledger_entries`, `inbox_messages`, `outbox_events`) foram criadas e verificadas em PostgreSQL real. Ainda não há endpoints de negócio, acesso da aplicação ao PostgreSQL (`pgx`, repositórios, `UnitOfWork`), runner de migrations integrado, autenticação, SQS ou readiness. O acompanhamento está em [PLANO_SISTEMA_JUNGLE_GO.md](PLANO_SISTEMA_JUNGLE_GO.md).
+**Estado: Fases 0 e 1 concluídas; Fase 2 em progresso.** Existe um servidor HTTP com Uber Fx, configuração validada, logs JSON, liveness e shutdown, além do domínio financeiro completo com testes: `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e eventos tipados. As migrations versionadas do schema financeiro foram criadas e verificadas em PostgreSQL real, e a integração `pgx` (pool + `UnitOfWork` transacional) está implementada e testada contra banco real. Ainda não há endpoints de negócio, repositórios, runner de migrations integrado, autenticação, SQS ou readiness. O acompanhamento está em [PLANO_SISTEMA_JUNGLE_GO.md](PLANO_SISTEMA_JUNGLE_GO.md).
 
 ## Executar localmente
 
@@ -28,6 +28,7 @@ Encerre com `Ctrl+C` ou `SIGTERM`. O servidor aguarda requisições em andamento
 | --- | --- | --- |
 | `HTTP_ADDR` | `:8080` | Host e porta TCP entre 1 e 65535; exemplo `127.0.0.1:8081` |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
+| `DATABASE_URL` | vazia | Connection string PostgreSQL (scheme `postgres://` ou DSN keyword/value). Vazia: a aplicação sobe sem banco enquanto não há endpoints de negócio; definida: URL inválida ou banco inacessível impedem a inicialização |
 
 A aplicação lê variáveis do processo. `.env` não é carregado automaticamente. Para usar o exemplo local:
 
@@ -49,7 +50,16 @@ make fmt          # gofmt
 make build        # bin/server
 ```
 
-Os testes atuais verificam configuração, contrato de liveness, composição Fx, porta ocupada, liberação do listener, conclusão de requisições durante shutdown e invariantes de `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e eventos de domínio. Não são testes de integração financeira nem substituem os cenários obrigatórios com infraestrutura real.
+Os testes atuais verificam configuração, contrato de liveness, composição Fx, porta ocupada, liberação do listener, conclusão de requisições durante shutdown, gate do módulo de banco, invariantes de `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e eventos de domínio. Não são testes de integração financeira nem substituem os cenários obrigatórios com infraestrutura real.
+
+Os testes transacionais do `UnitOfWork` exigem PostgreSQL real e usam a build tag `integration` (pulam sem a variável de conexão; nenhum mock substitui o banco):
+
+```sh
+docker run -d --name jungle-pg -e POSTGRES_PASSWORD=verify -p 127.0.0.1:55432:5432 postgres:17-alpine
+TEST_DATABASE_URL='postgres://postgres:verify@127.0.0.1:55432/postgres?sslmode=disable' \
+  go test -tags=integration ./internal/adapters/postgres/...
+docker rm -f jungle-pg
+```
 
 Para exercitar parsing e aritmética monetária com entradas geradas automaticamente:
 
@@ -93,8 +103,10 @@ A imagem usa build multi-stage e executa com usuário sem privilégios. O Compos
 
 ```text
 cmd/server/                 entrada do processo
+internal/application/      portas da aplicação (UnitOfWork)
 internal/bootstrap/        configuração, composição Fx e lifecycle
 internal/adapters/http/    servidor e contrato HTTP
+internal/adapters/postgres/ pool pgx e UnitOfWork transacional
 internal/domain/money/     valor monetário exato e testes
 internal/domain/wallet/    agregado de carteira e testes
 internal/domain/wagering/  transações, estados e políticas
@@ -106,7 +118,7 @@ docs/reference/            snapshot do enunciado e procedência
 references/                clone local do desafio (ignorado pelo Git)
 ```
 
-As decisões e limites estão em [ARCHITECTURE.md](ARCHITECTURE.md). O próximo incremento é a integração de `pgx` com pool e `UnitOfWork`; o runner de migrations (golang-migrate), alvos de Makefile e o Compose com PostgreSQL, Keycloak e LocalStack vêm nas etapas correspondentes. As demais pastas serão criadas quando tiverem implementação.
+As decisões e limites estão em [ARCHITECTURE.md](ARCHITECTURE.md). O próximo incremento é a abertura atômica de carteira (caso de uso com `OPENING`, ledger e outbox no mesmo commit), que trará os repositórios correspondentes. O runner de migrations (golang-migrate), alvos de Makefile e o Compose com PostgreSQL, Keycloak e LocalStack vêm nas etapas correspondentes. As demais pastas serão criadas quando tiverem implementação.
 
 O módulo e o remoto `origin` usam o repositório [hendelsantos/jungle-backend-challenge-go](https://github.com/hendelsantos/jungle-backend-challenge-go).
 

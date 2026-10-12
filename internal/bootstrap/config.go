@@ -9,9 +9,13 @@ import (
 )
 
 // Config contains only settings used by the current application.
+// DatabaseURL is optional while no business endpoint exists: when set, the
+// database module starts and pgxpool.ParseConfig validates the value before
+// the HTTP listener opens; when empty, the application runs without a pool.
 type Config struct {
-	HTTPAddr string
-	LogLevel slog.Level
+	HTTPAddr    string
+	LogLevel    slog.Level
+	DatabaseURL string
 }
 
 func LoadConfig() (Config, error) {
@@ -40,6 +44,9 @@ func LoadConfig() (Config, error) {
 		default:
 			return Config{}, fmt.Errorf("LOG_LEVEL must be debug, info, warn or error")
 		}
+	}
+	if value, exists := os.LookupEnv("DATABASE_URL"); exists {
+		cfg.DatabaseURL = value
 	}
 	return cfg, nil
 }
