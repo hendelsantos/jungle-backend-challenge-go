@@ -4,7 +4,7 @@
 > **Desafio:** Processamento Distribuído de Apostas em Go  
 > **Origem:** <https://github.com/junglegaming/backend-challenge-go>  
 > **Data do planejamento:** 12/10/2026  
-> **Estado:** Fase 0 concluída; Fase 1 com `Money`, `Wallet` e `WagerTransaction`. Validações e progresso registrados na seção 13. Ledger/eventos e revisão final da Fase 1, além das Fases 2–6, pendentes.
+> **Estado:** Fase 0 concluída; Fase 1 com `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e eventos tipados. Validações e progresso registrados na seção 13. Revisão final da Fase 1 e Fases 2–6 pendentes.
 
 ---
 
@@ -657,7 +657,7 @@ O próximo incremento é `Money`, conforme seção 16.3. Não há endpoints de n
 - [x] Criar `Money` e testes de parsing/overflow/moeda.
 - [x] Criar `Wallet` e testes de débito/crédito/versão.
 - [x] Criar transação, estados e políticas para seis kinds.
-- [ ] Criar ledger entry e eventos tipados sem dependência de infraestrutura.
+- [x] Criar ledger entry e eventos tipados sem dependência de infraestrutura.
 - [ ] Revisar invariantes e rodar `go test -race ./...`.
 
 **Pronto quando:** todas as regras de negócio têm testes unitários e não usam SQL nem framework.
@@ -685,8 +685,21 @@ pendentes suspendem o processamento; escopo/tipo/valor incompatível ou referên
 terminal sem sucesso rejeitam a operação. Compensação direta única definida na ADR 0001.
 `make check` e `make build` passaram; cobertura de instruções de 97,1% no pacote.
 Fuzzing BET → REFUND → ROLLBACK passou com 308.540 execuções em 10s.
-Não há ainda idempotência persistente, coordenação SQL, ledger, eventos ou worker de retry.
-Próximo incremento: lançamento imutável de ledger e eventos tipados.
+Não há ainda idempotência persistente, coordenação SQL, worker de retry ou garantias distribuídas.
+
+**Incremento WalletLedgerEntry e eventos tipados — 12/10/2026:** implementado em
+`internal/domain/ledger` e `internal/domain/events`, sem dependências de infraestrutura.
+O lançamento é um tipo-valor imutável cujo construtor valida `balanceAfter = balanceBefore ± amount`
+conforme a direção, quantia positiva, saldos não negativos, moedas coerentes, UUIDs não nulos e
+timestamp em UTC. Os eventos são envelopes imutáveis com `eventId`, `eventType`, `aggregateId`
+derivado dos dados, `correlationId`, `causationId` opcional (`uuid.Nil`), `occurredAt` em UTC,
+`version` por tipo e payloads tipados; `MarshalJSON` fixa o contrato do payload da outbox
+(dinheiro como string decimal, `causationId` omitido quando ausente). `gofmt`, `go vet ./...`,
+`go test ./...` e `go test -race ./...` passaram. Cobertura de instruções: 100,0% em `ledger`
+e 95,0% em `events` (restantes: marcadores de interface e ramos de defesa interna do
+`Validate` já cobertos em parte via literais no teste do pacote). Unicidade
+`(wallet_id, transaction_id)`, trigger append-only, tabela `outbox_events` e persistência
+continuam pendentes da Fase 2. Próximo incremento: revisão final de invariantes da Fase 1.
 
 ### Fase 2 — Persistência transacional e abertura
 - [ ] Criar migrations: wallets, transactions, ledger, inbox, outbox.

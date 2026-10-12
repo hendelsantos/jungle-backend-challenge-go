@@ -2,7 +2,7 @@
 
 ## Estado e direção
 
-A Fase 0 está concluída e a Fase 1 possui `Money`, `Wallet` e `WagerTransaction`. A direção é uma arquitetura hexagonal enxuta: domínio independente, casos de uso compartilhados por HTTP e SQS, adaptadores para entrada e persistência, e composição centralizada. Precisão monetária, invariantes da carteira e políticas de aposta estão implementadas em memória; as garantias transacionais e distribuídas ainda estão pendentes.
+A Fase 0 está concluída e a Fase 1 possui `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e os eventos tipados de domínio. A direção é uma arquitetura hexagonal enxuta: domínio independente, casos de uso compartilhados por HTTP e SQS, adaptadores para entrada e persistência, e composição centralizada. Precisão monetária, invariantes da carteira, políticas de aposta, lançamento de ledger e contrato de eventos estão implementadas em memória; as garantias transacionais e distribuídas ainda estão pendentes.
 
 Dependências planejadas:
 
@@ -133,15 +133,28 @@ A [ADR 0001](docs/adr/0001-compensacao-direta.md) define uma única compensaçã
 
 **Limites:** o processamento atual é de domínio em memória, sem ledger/eventos nem publicação. A aplicação terá de confirmar carteira, transação, ledger, inbox e outbox em uma única transação SQL. Não há ainda hash canônico, idempotência durável, contador de tentativas, deadline, backoff ou worker de referências. Reidratar uma pendência é testado; recuperação após reiniciar processos e banco continua pendente. Os agregados não devem ser compartilhados entre goroutines.
 
+## WalletLedgerEntry e eventos tipados — quarto incremento da Fase 1
+
+`internal/domain/ledger` e `internal/domain/events` fecham a base de domínio da Fase 1 sem nenhuma dependência de infraestrutura.
+
+**Ledger:** `Entry` é um tipo-valor imutável, como `Money`. Campos privados: identidade do lançamento, carteira, transação, direção (`DEBIT`/`CREDIT`), quantia, saldo anterior, saldo posterior e instante em UTC. Não há setters nem transições; por isso um único construtor serve tanto para criação quanto para reidratação. O construtor valida a exigência do enunciado: `balanceAfter = balanceBefore ± amount` conforme a direção, calculado com `Money.Add`/`Sub` (moeda e overflow checados); quantia obrigatoriamente positiva (LOSS e rejeições não geram lançamento); saldos não negativos; UUIDs não nulos; timestamp não nulo. Erros classificáveis por `errors.Is`: `ErrInvalidEntry`, `ErrInvalidDirection`, `ErrInvalidTime`, `ErrNonPositiveAmount`, `ErrNegativeBalance` e `ErrBalanceMismatch`, preservando os sentinelas de `Money`. O domínio não tem JSON próprio aqui: o DTO de leitura do ledger será do adaptador HTTP. Unicidade `(wallet_id, transaction_id)`, trigger contra `UPDATE`/`DELETE` e política contra `TRUNCATE` são responsabilidades do schema PostgreSQL (Fase 2).
+
+**Eventos:** quatro tipos concretos — `WagerTransactionProcessed` (inclusive `LOSS` e `OPENING` interno), `WagerTransactionRejected`, `WalletBalanceChanged` e `WagerTransactionPendingReference`. `Envelope` é um tipo-valor imutável com `eventID`, `eventType`, `aggregateID`, `correlationID`, `causationID` opcional (`uuid.Nil` significa ausência; `CausationID()` devolve `(id, ok)`), `occurredAt` em UTC, `version` do payload por tipo (hoje 1) e `data` tipado. O `aggregateID` é **derivado dos dados** — transação nos eventos de transação, carteira em `WalletBalanceChanged` — portanto o envelope não pode divergir do payload; `Validate` confere essa coerência como defesa adicional. Kinds permitidos por evento: `Processed` aceita os seis (inclusive `OPENING`); `Rejected` apenas os cinco externos (`OPENING` nunca rejeita); `PendingReference` apenas `WIN`/`REFUND`/`ROLLBACK` (únicos que carregam referência externa). Regras de quantia por kind não são revalidadas aqui: quem emite o evento é um agregado que já as impôs; o evento valida estrutura, não política.
+
+**WalletBalanceChanged:** o payload espelha o lançamento do ledger (`walletId`, `transactionId`, `direction`, `money`, `balanceBefore`, `balanceAfter`, `walletVersion`). O ID do lançamento não pertence ao evento, então não é possível reusar `ledger.Entry`; a invariante aritmética é revalidada localmente (poucas linhas, custo fixo) porque o evento inválido deve ser irrepresentável, não corrigido depois.
+
+**JSON da outbox:** `Envelope.MarshalJSON` define agora o contrato do payload persistido em `outbox_events`: chaves `eventId`, `eventType`, `aggregateId`, `correlationId`, `causationId` (omitido quando ausente), `occurredAt` em RFC 3339 UTC, `version` e `data`, com dinheiro em string decimal via `Money.MarshalJSON`. Marshal valida o envelope e rejeita o valor zero. Não há `UnmarshalJSON`: o caminho de escrita é a outbox e a desserialização pertence aos consumidores.
+
+**Limites desta etapa:** eventos são construídos em memória pelo futuro caso de uso; a gravação na `outbox_events` no mesmo commit SQL, o publisher com lease/backoff e a publicação somente após commit continuam pendentes. Os testes unitários cobrem construtores, kinds por evento, invariante de saldo em `WalletBalanceChanged`, envelope inconsistente e contrato JSON; cobertura de instruções: 100,0% em `ledger` e 95,0% em `events` (restam marcadores de interface e ramos internos de defesa). Nada aqui substitui os testes de integração com PostgreSQL real.
+
 ## Decisões previstas, ainda não implementadas
 
 O plano mestre detalha as escolhas que serão confirmadas com código e testes:
 
-- Lançamentos imutáveis de ledger e eventos tipados, incluindo os efeitos da abertura positiva.
-- PostgreSQL com `pgx`, SQL explícito e transação única para estado financeiro, ledger, inbox e outbox; constraints protegendo invariantes.
+- PostgreSQL com `pgx`, SQL explícito e transação única para estado financeiro, ledger, inbox e outbox; constraints protegendo invariantes, incluindo os efeitos da abertura positiva.
 - Coordenação por carteira entre processos; idempotência persistente e resultado original disponível para replay.
 - Compensação direta única por transação, referências pendentes duráveis e retries limitados.
 - Keycloak/OIDC, escopo por provedor e operações internas autorizadas.
 - SQS com inbox, outbox após commit e recuperação de publicação com IDs estáveis.
 
-Esses itens não estão concluídos. Migrations, ambiente Compose, endpoints de negócio, métricas e testes distribuídos serão acrescentados nas fases seguintes. O próximo incremento do domínio será ledger e eventos tipados.
+Esses itens não estão concluídos. Migrations, ambiente Compose, endpoints de negócio, métricas e testes distribuídos serão acrescentados nas fases seguintes. O próximo incremento é a revisão final de invariantes da Fase 1; em seguida as migrations PostgreSQL da Fase 2.
