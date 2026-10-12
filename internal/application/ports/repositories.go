@@ -38,6 +38,10 @@ type WalletRepository interface {
 
 type WagerTransactionRepository interface {
 	InsertWagerTransaction(ctx context.Context, state wagering.State) error
+	// UpdateWagerTransaction rewrites the mutable columns (status, failure,
+	// resolved reference, result, timestamps) of an existing row and its
+	// reference retry schedule. The retry command owns the row lock.
+	UpdateWagerTransaction(ctx context.Context, state wagering.State, schedule ReferenceSchedule) error
 }
 
 type LedgerRepository interface {

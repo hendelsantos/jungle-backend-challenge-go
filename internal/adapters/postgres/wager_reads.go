@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -97,6 +98,15 @@ func scanWagerTransaction(row rowScanner) (wagering.State, error) {
 	if err != nil {
 		return wagering.State{}, fmt.Errorf("postgres: scan wager transaction: %w", err)
 	}
+	return rebuildWagerState(state, kind, status, currency, amountCents,
+		provider, external, key, hash, round, game, refExt, referenceID, failureCode, resultBalance, resultVersion)
+}
+
+// rebuildWagerState maps scanned columns into the domain and revalidates the
+// invariants through Rehydrate.
+func rebuildWagerState(state wagering.State, kind, status, currency string, amountCents int64,
+	provider, external, key, hash, round, game, refExt *string, referenceID *uuid.UUID,
+	failureCode *string, resultBalance, resultVersion *int64) (wagering.State, error) {
 	amount, err := money.FromMinorUnits(amountCents, currency)
 	if err != nil {
 		return wagering.State{}, fmt.Errorf("postgres: wager amount: %w", err)
@@ -141,4 +151,73 @@ var _ ports.WagerQueryReader = (*WagerTransactionReader)(nil)
 
 func (r *WagerTransactionReader) FindByID(ctx context.Context, providerID string, id uuid.UUID) (wagering.State, error) {
 	return r.findOne(ctx, `WHERE provider_id = $1 AND id = $2`, providerID, id)
+}
+
+var _ ports.PendingReferenceClaimer = (*WagerTransactionReader)(nil)
+
+// ClaimDuePendingReferences locks due pending rows FOR UPDATE SKIP LOCKED in
+// the caller's transaction: a second worker skips locked rows instead of
+// blocking or double processing them. A NULL next_attempt_at means the
+// pending reference was never scheduled and is due immediately.
+func (r *WagerTransactionReader) ClaimDuePendingReferences(ctx context.Context, now time.Time, limit int) ([]ports.DuePendingReference, error) {
+	tx, err := activeTx(ctx, "claim due pending references")
+	if err != nil {
+		return nil, err
+	}
+	rows, err := tx.Query(ctx, `
+		SELECT id, wallet_id, player_id, kind, status, amount_cents, currency,
+		       provider_id, external_transaction_id, idempotency_key, payload_hash,
+		       round_id, game_id, reference_external_transaction_id, reference_transaction_id,
+		       failure_code, result_balance_cents, result_wallet_version, created_at, updated_at,
+		       attempt_count, next_attempt_at, reference_deadline_at
+		FROM wager_transactions
+		WHERE status = 'PENDING_REFERENCE'
+		  AND (next_attempt_at IS NULL OR next_attempt_at <= $1)
+		ORDER BY next_attempt_at NULLS FIRST
+		LIMIT $2
+		FOR UPDATE SKIP LOCKED`, now, limit)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: claim due pending references: %w", err)
+	}
+	defer rows.Close()
+	var due []ports.DuePendingReference
+	for rows.Next() {
+		var (
+			state                            wagering.State
+			kind, status, currency           string
+			amountCents                      int64
+			provider, external, key, hash    *string
+			round, game, refExt, failureCode *string
+			referenceID                      *uuid.UUID
+			resultBalance, resultVersion     *int64
+			attempts                         int
+			nextAttempt, deadline            *time.Time
+		)
+		err := rows.Scan(
+			&state.Request.ID, &state.Request.WalletID, &state.Request.PlayerID,
+			&kind, &status, &amountCents, &currency,
+			&provider, &external, &key, &hash, &round, &game, &refExt,
+			&referenceID, &failureCode, &resultBalance, &resultVersion,
+			&state.CreatedAt, &state.UpdatedAt,
+			&attempts, &nextAttempt, &deadline,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("postgres: scan due pending reference: %w", err)
+		}
+		scanned, err := rebuildWagerState(state, kind, status, currency, amountCents,
+			provider, external, key, hash, round, game, refExt, referenceID, failureCode, resultBalance, resultVersion)
+		if err != nil {
+			return nil, err
+		}
+		item := ports.DuePendingReference{State: scanned}
+		item.Attempts = attempts
+		if nextAttempt != nil {
+			item.NextAttemptAt, item.HasNextAttempt = *nextAttempt, true
+		}
+		if deadline != nil {
+			item.DeadlineAt, item.HasDeadline = *deadline, true
+		}
+		due = append(due, item)
+	}
+	return due, rows.Err()
 }

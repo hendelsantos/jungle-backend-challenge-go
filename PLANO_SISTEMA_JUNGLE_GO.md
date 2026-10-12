@@ -4,7 +4,7 @@
 > **Desafio:** Processamento Distribuído de Apostas em Go  
 > **Origem:** <https://github.com/junglegaming/backend-challenge-go>  
 > **Data do planejamento:** 12/10/2026  
-> **Estado:** Fases 0, 1 e 2 concluídas; Fase 3 concluída na aplicação: `ProcessWager` e endpoints financeiros autenticados por OIDC/Keycloak verificados com IdP e PostgreSQL reais (readiness inclui ping do banco). Migrations verificadas com trigger/CHECK automatizados, `pgx` (pool + `UnitOfWork`), abertura atômica, leitura de carteira, ledger com cursor e reconciliação em snapshot. Validações e progresso na seção 13. Runner de migrations, usuários de migração/runtime, SQS/inbox/publisher, worker de referências e Compose de entrega pendentes (Fases 4–6).
+> **Estado:** Fases 0, 1 e 2 concluídas; Fases 3 e 4 concluídas: `ProcessWager`, endpoints financeiros autenticados por OIDC/Keycloak verificados com IdP e PostgreSQL reais, readiness com ping do banco e worker distribuído de referências pendentes (`SKIP LOCKED`, backoff, TTL) verificado com PostgreSQL real. Migrations verificadas com trigger/CHECK automatizados, `pgx` (pool + `UnitOfWork`), abertura atômica, leitura de carteira, ledger com cursor e reconciliação em snapshot. Validações e progresso na seção 13. Runner de migrations, usuários de migração/runtime, SQS/inbox/publisher e Compose de entrega pendentes (Fases 5–6).
 
 ---
 
@@ -892,12 +892,40 @@ intra-processo com banco real. Próximo incremento: worker de referências (Fase
 e SQS/inbox/publisher (Fase 5).
 
 ### Fase 4 — Referências pendentes
-- [ ] Persistir `PENDING_REFERENCE` com deadline/backoff.
-- [ ] Worker distribuído com `SKIP LOCKED` e shutdown seguro.
-- [ ] Rejeitar referência não encontrada, inválida, terminal ou mismatched conforme política.
-- [ ] Testar chegada posterior, expiração e reinicialização.
+- [x] Persistir `PENDING_REFERENCE` com deadline/backoff.
+- [x] Worker distribuído com `SKIP LOCKED` e shutdown seguro.
+- [x] Rejeitar referência não encontrada, inválida, terminal ou mismatched conforme política.
+- [x] Testar chegada posterior, expiração e reinicialização.
 
 **Pronto quando:** nenhuma referência pendente depende da memória de um processo.
+
+**Incremento worker de referências — 12/10/2026:** concluída a Fase 4. Novo comando
+`RetryDueReferences` (`internal/application/command/retry_reference.go`) retoma
+pendências vencidas com claim `FOR UPDATE SKIP LOCKED` (porta
+`PendingReferenceClaimer` no `WagerTransactionReader`), backoff exponencial
+1s→5min gravado em `attempt_count`/`next_attempt_at` e TTL `REFERENCE_TTL`
+(default 24h) materializado como `reference_deadline_at` na primeira retomada.
+Desfechos no mesmo commit: `PROCESSED` com saldo/ledger/eventos idênticos ao fluxo
+síncrono (mesmo `transactionId`), `REJECTED` com código estável e evento
+(`REFERENCE_NOT_FOUND` por expiração sem tocar a carteira; `REFERENCE_NOT_PROCESSED`
+para referência terminal sem sucesso) ou reagendamento sem efeitos. Falha transitória
+rola back o claim e a pendência volta a ficar elegível; deadlock/serialização repetem
+a transação como no `ProcessWager`. `UpdateWagerTransaction` reescreve só colunas
+mutáveis — identidade da operação é imutável. Worker `internal/workers/references.go`
+(method value como dependência, sem interface artificial) faz polling configurável
+(`REFERENCE_WORKER_INTERVAL`, default 1s, lotes de 50) com cancelamento observável;
+bootstrap registra hooks no Fx e encerra o worker antes de fechar o pool. Novas
+configurações `REFERENCE_TTL`/`REFERENCE_WORKER_INTERVAL` validadas no LoadConfig.
+Verificações: `gofmt`, `go vet ./...`, `go vet -tags=integration ./...`,
+`go test ./...`, `go test -race ./...` limpos (11 pacotes); integração PostgreSQL 17
+real com `-race`: reagenda (attempts=1, next futuro, deadline persistido), resolve
+após a BET chegar (saldo 100.00, versão 3, 3 lançamentos, referência resolvida),
+rejeita por TTL com evento e carteira intacta, dois workers concorrentes retomam
+8 pendências uma única vez (soma de tentativas 8), falha transitária devolve o claim
+e a mesma pendência é concluída na chamada seguinte. Suíte HTTP continua passando
+com o worker ativo no lifecycle da aplicação Fx completa. Cross-channel com SQS e
+reinício literal de três processos ficam para a Fase 5/6. Próximo incremento:
+SQS/inbox/consumidor com LocalStack (Fase 5).
 
 ### Fase 5 — SQS, inbox e outbox
 - [ ] LocalStack com entrada FIFO, DLQ, redrive, fila de eventos.

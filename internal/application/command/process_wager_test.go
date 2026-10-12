@@ -72,6 +72,10 @@ func (f *processWagers) InsertWagerTransaction(_ context.Context, state wagering
 	return nil
 }
 
+func (f *processWagers) UpdateWagerTransaction(_ context.Context, state wagering.State, _ ports.ReferenceSchedule) error {
+	return f.err
+}
+
 type processLookups struct {
 	byKey        wagering.State
 	hasKey       bool

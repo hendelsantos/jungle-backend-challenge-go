@@ -74,6 +74,11 @@ func (f *fakeWagers) InsertWagerTransaction(_ context.Context, state wagering.St
 	return nil
 }
 
+func (f *fakeWagers) UpdateWagerTransaction(_ context.Context, state wagering.State, _ ports.ReferenceSchedule) error {
+	f.rec.record("wager.update")
+	return f.err
+}
+
 type fakeLedger struct {
 	rec     *recorder
 	err     error

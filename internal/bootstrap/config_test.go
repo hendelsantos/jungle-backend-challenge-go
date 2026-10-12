@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"os"
 	"testing"
+	"time"
 )
 
 func TestLoadConfigDefaults(t *testing.T) {
@@ -37,6 +38,51 @@ func TestLoadConfigDatabaseURL(t *testing.T) {
 		cfg, err := LoadConfig()
 		if err != nil || cfg.DatabaseURL != url {
 			t.Fatalf("database url was not preserved: %+v, %v", cfg, err)
+		}
+	})
+}
+
+func TestLoadConfigReferenceWorker(t *testing.T) {
+	t.Run("defaults", func(t *testing.T) {
+		t.Setenv("REFERENCE_TTL", "")
+		if err := os.Unsetenv("REFERENCE_TTL"); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("REFERENCE_WORKER_INTERVAL", "")
+		if err := os.Unsetenv("REFERENCE_WORKER_INTERVAL"); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := LoadConfig()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.ReferenceTTL != 24*time.Hour || cfg.ReferenceWorkerInterval != time.Second {
+			t.Fatalf("unexpected reference defaults: %+v", cfg)
+		}
+	})
+	t.Run("valid values are preserved", func(t *testing.T) {
+		t.Setenv("REFERENCE_TTL", "250ms")
+		t.Setenv("REFERENCE_WORKER_INTERVAL", "2s")
+		cfg, err := LoadConfig()
+		if err != nil || cfg.ReferenceTTL != 250*time.Millisecond || cfg.ReferenceWorkerInterval != 2*time.Second {
+			t.Fatalf("reference settings were not preserved: %+v, %v", cfg, err)
+		}
+	})
+	t.Run("invalid values are rejected", func(t *testing.T) {
+		for _, tc := range []struct{ name, ttl, interval string }{
+			{"bad ttl", "24hours", "1s"},
+			{"zero ttl", "0", "1s"},
+			{"negative ttl", "-1s", "1s"},
+			{"bad interval", "1s", "fast"},
+			{"zero interval", "1s", "0"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Setenv("REFERENCE_TTL", tc.ttl)
+				t.Setenv("REFERENCE_WORKER_INTERVAL", tc.interval)
+				if _, err := LoadConfig(); err == nil {
+					t.Fatalf("expected rejection for ttl=%q interval=%q", tc.ttl, tc.interval)
+				}
+			})
 		}
 	})
 }

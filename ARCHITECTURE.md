@@ -4,7 +4,7 @@
 
 O [enunciado oficial](docs/reference/README_DESAFIO.md) define os requisitos. A [matriz de conformidade](docs/CONFORMIDADE_DESAFIO.md) separa as garantias já demonstradas das pendências de integração e entrega; decisões arquiteturais devem respeitar esse contrato.
 
-As Fases 0 e 1 estão concluídas: `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e os eventos tipados de domínio, com invariantes revisadas e verificadas. A Fase 2 está concluída: schema, pool, transações, abertura, leituras e reconciliação. A Fase 3 tem `ProcessWager` e a API HTTP autenticada por OIDC/Keycloak com evidência real (ver a seção dedicada). A direção é uma arquitetura hexagonal enxuta: domínio independente, casos de uso compartilhados por HTTP e SQS, adaptadores para entrada e persistência, e composição centralizada.
+As Fases 0 e 1 estão concluídas: `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e os eventos tipados de domínio, com invariantes revisadas e verificadas. A Fase 2 está concluída: schema, pool, transações, abertura, leituras e reconciliação. A Fase 3 tem `ProcessWager` e a API HTTP autenticada por OIDC/Keycloak com evidência real. A Fase 4 está implementada: worker distribuído de referências pendentes com claim `SKIP LOCKED`, backoff e TTL (ver a seção dedicada). A direção é uma arquitetura hexagonal enxuta: domínio independente, casos de uso compartilhados por HTTP e SQS, adaptadores para entrada e persistência, e composição centralizada.
 
 Dependências planejadas:
 
@@ -254,9 +254,26 @@ No futuro consumidor SQS, a UnitOfWork externa da inbox será dona do commit e d
 
 **Limites desta etapa.** SQS, worker de referências, publisher da outbox, métricas e a demonstração com três processos continuam pendentes; a concorrência HTTP é intra-processo (goroutines) com banco real. `GET /wagering/transactions/:id` exposto apenas ao provedor do registro; acesso interno autorizado a essa consulta, se necessário, será acrescentado com permissão explícita documentada.
 
+## Worker de referências pendentes — Fase 4
+
+`internal/application/command/retry_reference.go` e `internal/workers/references.go` retomam operações `PENDING_REFERENCE` de forma durável e distribuída. Nenhuma pendência depende da memória de um processo: o agendamento inteiro vive em `wager_transactions`.
+
+**Claim.** `ClaimDuePendingReferences` (implementado pelo `WagerTransactionReader`) seleciona linhas `PENDING_REFERENCE` com `next_attempt_at` nulo ou vencido, `ORDER BY next_attempt_at NULLS FIRST LIMIT n FOR UPDATE SKIP LOCKED`, dentro da transação do reprocessamento. Duas instâncias nunca processam a mesma pendência: a segunda pula a linha travada em vez de esperar. A pendência recém-criada pelo `ProcessWager` nasce com `next_attempt_at` NULL — ou seja, elegível ao primeiro poll — sem que o INSERT do `ProcessWager` precise conhecer a política de retry.
+
+**Ciclo por pendência (uma transação).** Claim → prazo: o deadline é `created_at + REFERENCE_TTL` (default 24h), materializado na primeira retomada e preservado nas seguintes. Esgotado → `Reject(REFERENCE_NOT_FOUND)` + evento `WagerTransactionRejected`, sem ler a carteira (nenhum resultado financeiro é inventado). No prazo → `LockWallet` (mesma serialização por carteira do `ProcessWager`), resolução da referência por `(provider_id, reference_external_transaction_id)` e `Process` sobre o agregado reidratado: `PROCESSED` persiste saldo/ledger/eventos exatamente como o fluxo síncrono (mesmo `transactionId`, sem nova identidade financeira); `REJECTED` persiste o código estável e o evento; ainda pendente → `attempt_count+1` e `next_attempt_at = now + backoff(attempt)` (exponencial 1s→5min), sem eventos — o evento de espera original já é durável.
+
+**Transições de domínio.** O caminho reusa a máquina de estados (`PENDING_REFERENCE → PROCESSED | REJECTED | PENDING_REFERENCE`); o `UpdateWagerTransaction` reescreve apenas colunas mutáveis (estado, código, referência resolvida, resultado, timestamps, agendamento) — a identidade da operação é imutável. Reversões resolvidas continuam protegidas pelo índice único de compensação direta (ADR 0001): duas retomadas concorrentes da mesma referência não podem compensar duas vezes.
+
+**Concorrência e falhas.** Deadlock/serialização repetem a transação inteira (limite e backoff do `ProcessWager`). Uma falha transitória qualquer rola back o claim: a pendência permanece elegível exatamente como antes — sem perda, sem meio-processamento. `attempt_count` cresce apenas em commits bem-sucedidos.
+
+**Worker.** `ReferenceWorker.Run` faz polling por intervalo configurável (`REFERENCE_WORKER_INTERVAL`, default 1s) com lotes de até 50; erro de lote é logado e o próximo tick retenta. O loop recebe um `context`: cancelamento interrompe novos polls e aborta o lote em andamento (rollback → pendências voltam a ficar elegíveis para qualquer instância). `Run` só retorna depois do lote em andamento terminar — shutdown observável. O `Retry` é injetado como **method value** (`retry.RetryDueReferences`): o loop depende de uma função, não de um tipo concreto, sem criar interface artificial. No bootstrap, o `OnStop` do worker roda antes do close do pool (ordem reversa de registro do Fx), e a suíte HTTP sobe/derruba a aplicação completa com o worker ativo.
+
+**Eventos de retomada.** Correlation e causation dos eventos emitidos na retomada carregam o `transactionId` persistido: o correlation original do request não vive na linha da transação, e a operação retomada é tanto a causa quanto a unidade de rastreio da conclusão.
+
+**Evidências (PostgreSQL 17 real, `-race`).** Reagenda com `attempt_count=1` e `next_attempt_at` futuro; resolve após a BET chegar (saldo 100−25+25=100.00, versão 3, três lançamentos de ledger, referência resolvida gravada); rejeita por TTL com evento de rejeição e carteira intacta; dois workers concorrentes retomam 8 pendências exatamente uma vez cada (soma de tentativas 8, nenhuma carteira movida); falha transitária no agendamento rola back e a mesma pendência é reivindicada com sucesso na chamada seguinte. Unitários cobrem reagenda, resolução, expiração sem acesso à carteira, referência rejeitada, lote vazio e retry de deadlock; o worker cobre cancelamento, defaults e sobrevivência a erro de lote. A suíte HTTP (Keycloak real) sobe e encerra a aplicação Fx completa com o worker no lifecycle.
+
 ## Trabalho ainda pendente
 
-- Worker de referências com TTL/backoff e recuperação após reinício.
 - SQS/inbox, outbox publisher com lease, DLQ e testes de falhas entre commit, publicação e confirmação; readiness deve incluir o check de SQS.
 - Runner de migrations, Compose de entrega reproduzível (aplicação + gateway + filas), métricas e demonstração com três processos independentes.
 

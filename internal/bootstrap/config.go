@@ -2,11 +2,14 @@ package bootstrap
 
 import (
 	"fmt"
-	oidcauth "github.com/hendelsantos/jungle-backend-challenge-go/internal/adapters/oidc"
 	"log/slog"
 	"net"
 	"os"
 	"strconv"
+	"time"
+
+	oidcauth "github.com/hendelsantos/jungle-backend-challenge-go/internal/adapters/oidc"
+	"github.com/hendelsantos/jungle-backend-challenge-go/internal/application/command"
 )
 
 // Config contains only settings used by the current application.
@@ -14,15 +17,18 @@ import (
 // database module starts and pgxpool.ParseConfig validates the value before
 // the HTTP listener opens; when empty, the application runs without a pool.
 type Config struct {
-	HTTPAddr     string
-	LogLevel     slog.Level
-	DatabaseURL  string
-	OIDCIssuer   string
-	OIDCAudience string
+	HTTPAddr                string
+	LogLevel                slog.Level
+	DatabaseURL             string
+	OIDCIssuer              string
+	OIDCAudience            string
+	ReferenceTTL            time.Duration
+	ReferenceWorkerInterval time.Duration
 }
 
 func LoadConfig() (Config, error) {
-	cfg := Config{HTTPAddr: ":8080", LogLevel: slog.LevelInfo}
+	cfg := Config{HTTPAddr: ":8080", LogLevel: slog.LevelInfo,
+		ReferenceTTL: command.DefaultReferenceTTL, ReferenceWorkerInterval: time.Second}
 	if value, exists := os.LookupEnv("HTTP_ADDR"); exists {
 		cfg.HTTPAddr = value
 	}
@@ -50,6 +56,20 @@ func LoadConfig() (Config, error) {
 	}
 	if value, exists := os.LookupEnv("DATABASE_URL"); exists {
 		cfg.DatabaseURL = value
+	}
+	if value, exists := os.LookupEnv("REFERENCE_TTL"); exists {
+		ttl, err := time.ParseDuration(value)
+		if err != nil || ttl <= 0 {
+			return Config{}, fmt.Errorf("REFERENCE_TTL must be a positive duration like 24h or 250ms")
+		}
+		cfg.ReferenceTTL = ttl
+	}
+	if value, exists := os.LookupEnv("REFERENCE_WORKER_INTERVAL"); exists {
+		interval, err := time.ParseDuration(value)
+		if err != nil || interval <= 0 {
+			return Config{}, fmt.Errorf("REFERENCE_WORKER_INTERVAL must be a positive duration like 1s or 250ms")
+		}
+		cfg.ReferenceWorkerInterval = interval
 	}
 	cfg.OIDCIssuer = os.Getenv("OIDC_ISSUER")
 	cfg.OIDCAudience = os.Getenv("OIDC_AUDIENCE")

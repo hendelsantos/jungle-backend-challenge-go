@@ -3,8 +3,9 @@ package ports
 import (
 	"context"
 	"errors"
-	"github.com/google/uuid"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/domain/wagering"
 )
 
@@ -38,4 +39,29 @@ type WagerTransactionReader interface {
 type WagerQueryReader interface {
 	FindByID(ctx context.Context, providerID string, id uuid.UUID) (wagering.State, error)
 	FindByExternalID(ctx context.Context, providerID, externalID string) (wagering.State, error)
+}
+
+// ReferenceSchedule is the durable retry plan of a pending reference. The zero
+// value means "not scheduled yet": a freshly persisted PENDING_REFERENCE has
+// NULL scheduling columns and stays claimable until the worker plans it.
+type ReferenceSchedule struct {
+	Attempts       int
+	NextAttemptAt  time.Time
+	HasNextAttempt bool
+	DeadlineAt     time.Time
+	HasDeadline    bool
+}
+
+// DuePendingReference is one claimed pending reference with its schedule.
+// The claim locks the row FOR UPDATE SKIP LOCKED inside the caller's unit of
+// work, so concurrent workers never process the same pending operation.
+type DuePendingReference struct {
+	State wagering.State
+	ReferenceSchedule
+}
+
+// PendingReferenceClaimer hands due pending references to the retry command.
+// The claim must run inside the caller's transaction.
+type PendingReferenceClaimer interface {
+	ClaimDuePendingReferences(ctx context.Context, now time.Time, limit int) ([]DuePendingReference, error)
 }

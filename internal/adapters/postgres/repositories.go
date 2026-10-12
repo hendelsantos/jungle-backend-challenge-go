@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -164,6 +165,37 @@ func (WagerTransactionRepository) InsertWagerTransaction(ctx context.Context, st
 	return nil
 }
 
+// UpdateWagerTransaction rewrites the mutable columns of an existing row and
+// its reference retry schedule. Identity columns are immutable by design; the
+// schema CHECKs revalidate the new state. The retry command holds the row
+// lock, so exactly one row must match.
+func (WagerTransactionRepository) UpdateWagerTransaction(ctx context.Context, state wagering.State, schedule ports.ReferenceSchedule) error {
+	tx, err := activeTx(ctx, "update wager transaction")
+	if err != nil {
+		return err
+	}
+	tag, err := tx.Exec(ctx, `
+		UPDATE wager_transactions SET
+			status = $2, failure_code = $3, reference_transaction_id = $4,
+			result_balance_cents = $5, result_wallet_version = $6, updated_at = $7,
+			attempt_count = $8, next_attempt_at = $9, reference_deadline_at = $10
+		WHERE id = $1`,
+		state.Request.ID, string(state.Status), nullText(string(state.FailureCode)),
+		nullUUID(state.ReferenceID),
+		nullInt64(state.Result.Balance.MinorUnits(), state.HasResult),
+		nullInt64(state.Result.WalletVersion, state.HasResult),
+		state.UpdatedAt, schedule.Attempts,
+		nullTime(schedule.NextAttemptAt, schedule.HasNextAttempt),
+		nullTime(schedule.DeadlineAt, schedule.HasDeadline))
+	if err != nil {
+		return fmt.Errorf("postgres: update wager transaction: %w", err)
+	}
+	if tag.RowsAffected() != 1 {
+		return fmt.Errorf("postgres: update wager transaction %s: no row matched", state.Request.ID)
+	}
+	return nil
+}
+
 type LedgerRepository struct{}
 
 func NewLedgerRepository() *LedgerRepository { return &LedgerRepository{} }
@@ -229,6 +261,13 @@ func nullUUID(id uuid.UUID) any {
 
 func nullInt64(value int64, present bool) any {
 	if !present {
+		return nil
+	}
+	return value
+}
+
+func nullTime(value time.Time, present bool) any {
+	if !present || value.IsZero() {
 		return nil
 	}
 	return value

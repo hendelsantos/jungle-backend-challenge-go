@@ -2,9 +2,9 @@
 
 Solução em desenvolvimento para o [desafio de processamento distribuído de apostas](https://github.com/junglegaming/backend-challenge-go).
 
-**Estado: Fases 0, 1 e 2 concluídas; Fase 3 com endpoints financeiros autenticados implementados e verificados com Keycloak e PostgreSQL reais.** `ProcessWager` trata BET, WIN, LOSS, REFUND e ROLLBACK com lock por carteira, idempotência persistente e gravação de saldo, transação, ledger e outbox no mesmo commit. Os contratos HTTP oficiais estão expostos com autenticação OIDC (`client_credentials`), isolamento entre provedores e operações internas restritas; `GET /health/ready` verifica o PostgreSQL.
+**Estado: Fases 0, 1 e 2 concluídas; Fase 3 concluída; Fase 4 (worker de referências) implementada e verificada com PostgreSQL real.** `ProcessWager` trata BET, WIN, LOSS, REFUND e ROLLBACK com lock por carteira, idempotência persistente e gravação de saldo, transação, ledger e outbox no mesmo commit. Os contratos HTTP oficiais estão expostos com autenticação OIDC (`client_credentials`), isolamento entre provedores e operações internas restritas; `GET /health/ready` verifica o PostgreSQL. Operações com referência ausente ficam `PENDING_REFERENCE` e um worker distribuído as retoma com backoff exponencial e TTL, concluindo, reagendando ou rejeitando com `REFERENCE_NOT_FOUND`.
 
-Ainda faltam SQS/inbox/publisher, worker de referências, Compose de entrega completo, métricas e a demonstração com três processos independentes. Referências ausentes ficam persistidas em `PENDING_REFERENCE`, mas ainda não são retomadas automaticamente. O acompanhamento está em [PLANO_SISTEMA_JUNGLE_GO.md](PLANO_SISTEMA_JUNGLE_GO.md). Prazo interno: **14/10/2026**.
+Ainda faltam SQS/inbox/publisher, Compose de entrega completo, métricas e a demonstração com três processos independentes. O acompanhamento está em [PLANO_SISTEMA_JUNGLE_GO.md](PLANO_SISTEMA_JUNGLE_GO.md). Prazo interno: **14/10/2026**.
 
 A [matriz de conformidade](docs/CONFORMIDADE_DESAFIO.md) relaciona as exigências oficiais à implementação, aos testes e às pendências. O README oficial prevalece sobre o plano interno; a entrega só estará concluída com os requisitos obrigatórios demonstrados no ambiente exigido.
 
@@ -35,6 +35,8 @@ Encerre com `Ctrl+C` ou `SIGTERM`. O servidor aguarda requisições em andamento
 | `DATABASE_URL` | vazia | Connection string PostgreSQL (scheme `postgres://` ou DSN keyword/value). Vazia: a aplicação sobe apenas com health; definida: URL inválida ou banco inacessível impedem a inicialização |
 | `OIDC_ISSUER` | vazia | URL pública do realm no IdP (ex.: `http://localhost:58080/realms/jungle`). Definida: habilita os endpoints de negócio e torna `DATABASE_URL` obrigatória |
 | `OIDC_AUDIENCE` | vazia | Audience exigida nos access tokens (ex.: `jungle-api`). Obrigatória junto com `OIDC_ISSUER` |
+| `REFERENCE_TTL` | `24h` | Prazo máximo de espera por uma referência ausente; esgotado, a operação é rejeitada com `REFERENCE_NOT_FOUND` |
+| `REFERENCE_WORKER_INTERVAL` | `1s` | Intervalo de polling do worker de referências (ativo quando `DATABASE_URL` está definida) |
 
 A aplicação lê variáveis do processo. `.env` não é carregado automaticamente. Para usar o exemplo local:
 
@@ -163,6 +165,18 @@ go test ./internal/domain/wagering -run '^$' -fuzz '^FuzzBetRefundRollback$' -fu
 `WalletLedgerEntry` é um tipo-valor imutável com um lançamento por movimentação efetiva: direção, quantia positiva, saldo anterior e posterior consistentes (`balanceAfter = balanceBefore ± amount`) e timestamp em UTC. Não há setters; criação e reidratação coincidem. Unicidade `(wallet_id, transaction_id)` e proteção contra edição/exclusão são impostas pelo schema PostgreSQL.
 
 Os eventos tipados (`WagerTransactionProcessed`, `WagerTransactionRejected`, `WalletBalanceChanged`, `WagerTransactionPendingReference`) são envelopes imutáveis com `eventId`, `eventType`, `aggregateId` derivado dos dados, `correlationId`, `causationId` opcional, `occurredAt` em UTC, `version` por tipo e payload tipado; `MarshalJSON` fixa o contrato do payload da outbox com dinheiro em string decimal. A gravação na `outbox_events` é atômica com as operações financeiras; a publicação pós-commit via SQS ainda será implementada.
+
+## Worker de referências pendentes
+
+Com `DATABASE_URL` definida, todo processo executa um worker que retoma operações `PENDING_REFERENCE`:
+
+- **Claim distribuído**: `SELECT ... FOR UPDATE SKIP LOCKED` sobre as linhas vencidas; múltiplas instâncias disputam sem bloquear nem duplicar.
+- **Backoff exponencial** (1s → 5min) gravado em `attempt_count`/`next_attempt_at`; o prazo (`reference_deadline_at`, criação + `REFERENCE_TTL`) é fixado na primeira retomada.
+- **Desfechos**: referência chegou e elegível → `PROCESSED` com saldo/ledger/eventos no mesmo commit; referência ainda pendente → reagendamento sem efeitos; referência terminal sem sucesso → `REJECTED` (`REFERENCE_NOT_PROCESSED`); prazo esgotado → `REJECTED` (`REFERENCE_NOT_FOUND`) com evento de rejeição, sem tocar a carteira.
+- **Falha transitória**: rollback integral do claim deixa a pendência elegível de novo; nenhuma pendência depende da memória de um processo.
+- **Shutdown**: `SIGTERM` cancela novos polls; o lote em andamento commita ou rola back, e o Fx encerra o worker antes de fechar o pool.
+
+`WagerTransaction` continua expondo a consulta de pendências por `GET /wagering/transactions/:id`.
 
 ## ProcessWager: garantias verificadas
 
