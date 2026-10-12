@@ -4,7 +4,7 @@ Solução em desenvolvimento para o [desafio de processamento distribuído de ap
 
 **Estado: Fases 0–5 implementadas; Fase 6 com Compose de entrega (três réplicas + gateway) e smoke verificados.** `ProcessWager` trata BET, WIN, LOSS, REFUND e ROLLBACK com lock por carteira, idempotência persistente e gravação de saldo, transação, ledger e outbox no mesmo commit. Os contratos HTTP oficiais estão expostos com autenticação OIDC (`client_credentials`), isolamento entre provedores e operações internas restritas; `GET /health/ready` verifica PostgreSQL e, quando configurado, SQS. Operações com referência ausente ficam `PENDING_REFERENCE` e um worker distribuído as retoma com backoff exponencial e TTL, concluindo, reagendando ou rejeitando com `REFERENCE_NOT_FOUND`. Eventos comprometidos são publicados pós-commit na fila de eventos por um publisher com claim/lease, backoff e republicação com mesmo `eventId`.
 
-Ainda faltam kill literal de containers nos pontos críticos, mensagem SQS demonstrada no ambiente de entrega e a revisão final. `GET /metrics` (via gateway) expõe o registro Prometheus: operações por kind/status, replays idempotentes, conflitos, histograma de duração, retries de transação, reentregas, DLQ, divergências de reconciliação e pendência/atraso da outbox (com três réplicas cada scrape reflete o processo atingido; consolidação exige agregação externa). O acompanhamento está em [PLANO_SISTEMA_JUNGLE_GO.md](PLANO_SISTEMA_JUNGLE_GO.md). Prazo interno: **14/10/2026**.
+Kills literais, reinício com pendências e mensagem SQS assinada são reproduzíveis com `scripts/fault.sh` (Testes E/F/H). Falta a revisão final de entrega. `GET /metrics` (via gateway) expõe o registro Prometheus: operações por kind/status, replays idempotentes, conflitos, histograma de duração, retries de transação, reentregas, DLQ, divergências de reconciliação e pendência/atraso da outbox (com três réplicas cada scrape reflete o processo atingido; consolidação exige agregação externa). O acompanhamento está em [PLANO_SISTEMA_JUNGLE_GO.md](PLANO_SISTEMA_JUNGLE_GO.md). Prazo interno: **14/10/2026**.
 
 A [matriz de conformidade](docs/CONFORMIDADE_DESAFIO.md) relaciona as exigências oficiais à implementação, aos testes e às pendências. O README oficial prevalece sobre o plano interno; a entrega só estará concluída com os requisitos obrigatórios demonstrados no ambiente exigido.
 
@@ -110,6 +110,29 @@ Os logs por container comprovam as três réplicas na rota (`docker logs
 jungle-delivery-api-1|2|3`). As chaves SQS, segredos do Keycloak e credenciais
 do banco são exclusivos de desenvolvimento — nunca publicar o ambiente. Para
 zerar, `docker compose -f docker-compose.yml down -v`.
+
+## Falhas literais (Testes E/F/H)
+
+O `scripts/fault.sh` executa três drills contra o ambiente de entrega já ativo,
+com asserções financeiras por HTTP:
+
+```sh
+GATEWAY_URL=http://localhost:9080 KEYCLOAK_URL=http://localhost:59080 bash scripts/fault.sh
+```
+
+- **Teste E:** `docker compose kill -s KILL api` nas três réplicas enquanto um
+  envelope assinado do SQS está em processamento; após o restart a reentrega
+  conclui a operação uma única vez (saldo, dois lançamentos e reconciliação
+  conferidos) — o registro durável decide, não o momento do kill.
+- **Teste F:** kill logo após o commit de eventos de outbox; o publisher drena
+  o backlog após o restart (`jungle_outbox_pending` → 0) com os mesmos eventIds.
+- **Teste H:** `PENDING_REFERENCE` (REFUND referenciando um BET futuro → `202`),
+  `restart api` e chegada posterior da BET referenciada; o worker conclui a
+  pendência com saldo exato e reconciliação consistente.
+
+O LocalStack de entrega fica publicado apenas em loopback
+(`JUNGLE_DELIVERY_SQS_PORT`, default `49570`) para o produtor assinante
+`cmd/send-wager`; o broker continua inacessível externamente.
 
 ## API autenticada
 

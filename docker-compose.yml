@@ -52,6 +52,10 @@ services:
     environment:
       SERVICES: sqs
       SQS_ENDPOINT_STRATEGY: dynamic
+    # Loopback publication lets the fault script sign and publish wagers from
+    # the host; the broker stays unreachable from outside the machine.
+    ports:
+      - "127.0.0.1:${JUNGLE_DELIVERY_SQS_PORT:-49570}:4566"
     healthcheck:
       test: ["CMD-SHELL", "awslocal sqs list-queues >/dev/null"]
       interval: 2s

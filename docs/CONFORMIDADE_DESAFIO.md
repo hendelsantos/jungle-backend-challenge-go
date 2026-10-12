@@ -32,11 +32,11 @@ Os caminhos de testes são reproduzíveis pelos comandos do [README](../README.m
 | §§2, 10: SQS, FIFO, DLQ, redrive e controle de acesso | Implementado na camada | LocalStack Community 4.14.0 sem conta/token; três filas FIFO provisionadas no startup; redrive após três recebimentos, retry 1s/2s/4s, HMAC vinculado ao provedor. Integrações reais de DLQ, tentativas e assinatura. Deduplicação financeira permanece no PostgreSQL. |
 | §§6.5, 10: inbox e consumidor transacional | Implementado na camada | `ConsumeWagerMessage` reutiliza `ProcessWager` e sua transação; SHA-256 dos bytes do envelope, conclusão no mesmo commit. Erro SQL na inbox reverte domínio/ledger/outbox; duplicata, identidade reescrita, perda da resposta de commit e reentrega testadas com broker/PG reais. Interrupção literal pendente. |
 | §11: publisher concorrente e recuperação da outbox | Implementado na camada | Publicação pós-commit: claim `SKIP LOCKED` com lease por token, backoff 1s→5min, ack/reschedule condicionados ao token, lease abandonado recuperado (`attempts=2`), republicação com mesmo `eventId` e payload do snapshot, dois/quatro publishers concorrentes sem duplicação, tudo com LocalStack FIFO e PostgreSQL reais (failpoint determinístico para o crash). Falta kill literal do processo. |
-| §§4, 10: shutdown de workers | Parcial | Lifecycle HTTP/pool/OIDC e worker de referências com cancelamento observável (polls param; lote em andamento commita ou rola back; suíte HTTP sobe/derruba a app com worker). Consumidor SQS e publisher da outbox também canceláveis: publisher cancela I/O e libera leases conhecidos com cleanup limitado. Falta kill literal de processos. |
+| §§4, 10: shutdown e kills de workers | Implementado na camada | Lifecycle HTTP/pool/OIDC, worker de referências com cancelamento observável e lote em andamento commitando ou rolando back; consumidor SQS e publisher da outbox canceláveis. **Kills literais verificados**: `docker compose kill -s KILL api` nas três réplicas com aposta SQS em voo (reentrega sem débito duplicado), com eventos não confirmados na outbox (drenagem pós-reinício com mesmos eventIds) e reinício com PENDING_REFERENCE retomada (Testes E/F/H por `scripts/fault.sh`). |
 | §12: observabilidade | Implementado na camada | Logs JSON (`slog`) com correlationID por request e, no consumidor, messageId/transactionId/status/replay; `GET /metrics` expõe registro Prometheus dedicado: `jungle_wager_operations_total{kind,status}`, `idempotent_replays`, `idempotency_conflicts`, `processing_duration_seconds{kind}` (histograma), `db_retries_total{reason}`, `sqs_redeliveries_total`, `dlq_total`, `wallet_reconciliations_total`, `reconciliation_divergences_total` e o conjunto `jungle_outbox_*` (pendência/atraso sempre do banco, counters por processo). Sem labels de alta cardinalidade; verificadas no Compose de entrega com operações e replay reais. Falta revisão final durante os kills literais. |
 | §§13, 15: migrations e ambiente reproduzível | Implementado na camada | Runner operacional `cmd/migrate` verificado com PostgreSQL real; `compose.dev.yaml` para testes e `docker-compose.yml` de entrega (app + migrate job + IdP + filas + gateway) subindo de checkout limpo, verificado nesta entrega. Filas provisionadas pelo app. Falta suíte de integração/falhas apontada ao ambiente de entrega e kill literal. |
-| §13: integração real e falhas | Parcial | PostgreSQL, Keycloak e LocalStack reais: HTTP/SQS, inbox, retry/DLQ, reentrega, falhas injetadas de commit, falha publish/ack da outbox e agora três processos independentes (smoke do Compose). Faltam interrupções literais e reinício. |
-| §15 (complemento): mensagens, testes e falhas | Parcial | Compose de entrega e smoke verificados com rota HTTP; rodar a suíte de integração e publicar mensagem SQS no ambiente de entrega, além do kill literal de containers, segue pendente. |
+| §13: integração real e falhas | Implementado na camada | PostgreSQL, Keycloak e LocalStack reais: HTTP/SQS, inbox, retry/DLQ, reentrega, falhas injetadas de commit, falha publish/ack da outbox, três processos independentes (smoke) e kills literais com reinício/pendência (fault.sh). |
+| §15 (complemento): mensagem assinada reproduzível | Implementado na camada | `scripts/fault.sh` publica envelope assinado com `cmd/send-wager` no broker do Compose de entrega e valida consumo/reentrega após kill -9; smoke cobre a rota HTTP end-to-end. |
 
 ## Contratos HTTP que devem ser entregues
 
@@ -60,9 +60,8 @@ recurso inexistente. Isso está verificado por testes com Keycloak real.
 
 Fase 6: fechamento para entrega final.
 
-1. Kill literal de containers nos pontos críticos (consumidor após commit antes do delete; publisher após envio antes do ack) e reinício com pendências retomadas.
-2. Mensagem SQS publicada e consumida no ambiente de entrega; suíte de integração completa contra ele.
-3. Métricas financeiras restantes e revisão final de eliminações/endpoints/secrets.
+1. Revisão final de eliminatórias, endpoints, `.env.example` e secrets.
+2. Rerun completo das verificações (gofmt/vet/unitários `-race`/integração `-race`) + smoke + faults a partir da entrega final.
 
 ## Decisões permitidas e limites de aceitação
 

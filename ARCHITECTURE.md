@@ -274,10 +274,41 @@ No futuro consumidor SQS, a UnitOfWork externa da inbox será dona do commit e d
 
 ## Trabalho ainda pendente
 
-- Kill literal de containers nos pontos críticos (Testes E/F) e reinício com pendências retomadas.
-- Suíte de integração/falhas e mensagem SQS apontadas ao ambiente de entrega.
+- Revisão final de entregáveis (eliminatórias, `.env.example`, secrets, README consolidado).
 
 As seções anteriores registram a evolução por incremento; as garantias atuais do processamento estão descritas acima. A entrega completa continua pendente.
+
+
+## Falhas literais — Fase 6, incremento 4
+
+`scripts/fault.sh` executa os Testes E/F/H como drills contra o Compose de
+entrega, fechando o que a integração determinística comum não cobre: um
+processo morto de verdade no meio do fluxo.
+
+**Design do drill.** O comando `docker compose kill -s KILL api` mata as três
+réplicas de uma vez; como todas disputam a mesma fila, o momento exato da
+morte (antes do receive, durante o processamento, após o commit e antes do
+delete, ou depois do delete) não é previsível — e é justamente essa a
+proposição: em qualquer ponto de morte, recomeçar leva ao mesmo resultado
+financeiro, decidido pela identidade persistente (índices únicos, inbox e
+referência no banco), nunca pela memória do processo. `up -d api` devolve as
+réplicas com retry dentro da espera de saúde (a recuperação de contêiner morto
+às vezes exige repetir `up -d` mesmo com a configuração inalterada).
+
+**Asserções e custos.** Toda verificação é por HTTP com tokens reais: saldo,
+contagem de lançamentos do ledger, status da operação por ID externo e
+reconciliação de snapshot. O produtor assinante (`cmd/send-wager`) fala com o
+LocalStack publicado apenas em loopback; a fila é resolvida via
+`get-queue-url`, pois o esquema de URL do LocalStack muda entre versões.
+
+**Aprendizados registrados:** dois erros de identidade descobertos pela
+política do domínio ao construir o script — player divergente da carteira
+(`ErrWalletScope`, DLQ permanente) e rodada divergente entre REFUND e BET
+(pendência reagendando indefinidamente em vez de concluir); ambos comprovam a
+validação de escopo e moldaram o drill (identidades casadas exatamente). O
+"not observed in flight" acontece quando a mensagem é consumada antes da
+janela de observação; o canal de voo determinístico já está coberto pelos
+failpoints de integração.
 
 
 ## Métricas financeiras — Fase 6, incremento 3

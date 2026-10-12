@@ -943,7 +943,7 @@ SQS/inbox/consumidor com LocalStack (Fase 5).
 - [x] Runner de migrations operacional (`cmd/migrate` com golang-migrate, Makefile) verificado com PostgreSQL real.
 - [x] Compose de entrega reproduzível a partir de checkout limpo (app + migrations + IdP + filas + gateway), verificado com `down -v` + `up --build` + smoke.
 - [x] Expor três processos reais e confirmar paralelismo por carteira (réplicas do Compose atrás do gateway; Teste A/B executados entre processos).
-- [ ] Testar interrupções, retries, DLQ, auditoria e reconciliação final (kill literal do Consumidor/publisher nos containers).
+- [x] Kills literais e reinício com dados verificados por `scripts/fault.sh` no Compose de entrega (Testes E/F/H: kill -9 com aposta SQS em voo sem débito duplicado; kill com eventos não reconhecidos na outbox com drenagem pós-reinício; reinício com PENDING_REFERENCE retomada pelo worker e concluída após a BET chegar).
 - [x] JSON logging (`slog`) e métricas financeiras requisitadas (`jungle_wager_*`, `jungle_wallet_*`, histograma de duração) expostas em `/metrics` e verificadas no Compose de entrega; liveness/readiness mantidos.
 - [ ] Documentar `README.md`, `ARCHITECTURE.md`, ADRs e scripts de reprodução (README/ARCHITECTURE atualizados a cada incremento; revisão final pendente).
 - [ ] Executar `gofmt`, `go vet ./...`, `go test ./...`, `go test -race ./...` e integração (executados neste incremento; repetir na entrega).
@@ -1023,6 +1023,35 @@ publisher ajustado para `testutil.ToFloat64` e deltas). No Compose de entrega
 reconstruído: BET processada + replay, `operations_total{BET,PROCESSED}=2`,
 `replays=1`, histograma com 2 observações, gauges outbox em 0 — evidência em
 produção local.
+
+### Fase 6, incremento 4 — kills literais e reinício com dados (12/10/2026)
+
+`scripts/fault.sh` executa três drills contra o Compose de entrega, todos com
+asserções financeiras por HTTP (saldo, ledger, status externo, reconciliação):
+LocalStack publicado em loopback (`JUNGLE_DELIVERY_SQS_PORT`, default 49570)
+para o produtor assinante `cmd/send-wager`; a fila de entrada é resolvida via
+`get-queue-url` (o esquema de URL do LocalStack muda entre versões).
+
+**Teste E (kill -9 com aposta em voo):** wallet de 100.00, envelope assinado
+publicado, aguardada a marcação not-visible (quando observável), `docker
+compose kill -s KILL api` nas três réplicas e `up -d api`; após a volta, a
+reentrega conclui a operação uma única vez (saldo 75.00, dois lançamentos,
+reconciliação consistente) — commit perdido ou preservado, ambos recobram pelo
+registro durável. **Teste F (kill com eventos não reconhecidos):** BET por HTTP
+seguida de kill imediato; após a volta o publisher drena o backlog
+(`jungle_outbox_pending` em 0) com os mesmos eventIds. **Teste H (reinício com
+pendência):** REFUND de 25.00 referenciando um BET futuro → `202
+PENDING_REFERENCE`; `restart api`; a BET chega depois; o worker conclui o
+REFUND (saldo 100.00, `PROCESSED`, reconciliado).
+
+Restrições de identidade aplicadas pelo domínio durante a elaboração do script
+(e usadas como aprender de novo): player e wallet devem combinar
+(`ErrWalletScope` → DLQ permanente), e a referência exige rodada, moeda e
+provedor coerentes — duas rodadas divergentes deixam a pendência reagendando
+em vez de concluir; o script hoje casa exatamente as identidades. O
+"not observed in flight" ocorre quando a combinação morte-caça consuma a
+mensagem antes da marcação; o drill continua válido e cobre canal de voo
+simulado na integração determinística anterior. Pendências: revisão final.
 
 Verificações: `gofmt`, `go vet ./...`, `go test -race ./...`,
 `go vet -tags=integration ./...` e `go test -race -tags=integration ./...`
