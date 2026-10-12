@@ -85,7 +85,7 @@ LocalStack SQS, três réplicas independentes da aplicação e o gateway nginx �
 isolado do ambiente de desenvolvimento por projeto e por portas de loopback:
 
 ```sh
-docker compose -f docker-compose.yml up --build -d
+docker compose up --build -d   # `-f docker-compose.yml` é o arquivo padrão do diretório
 docker compose -f docker-compose.yml ps    # gateway, api-1/2/3, keycloak, localstack, postgres: healthy
 ```
 
@@ -126,9 +126,11 @@ GATEWAY_URL=http://localhost:9080 KEYCLOAK_URL=http://localhost:59080 bash scrip
   conferidos) — o registro durável decide, não o momento do kill.
 - **Teste F:** kill logo após o commit de eventos de outbox; o publisher drena
   o backlog após o restart (`jungle_outbox_pending` → 0) com os mesmos eventIds.
-- **Teste H:** `PENDING_REFERENCE` (REFUND referenciando um BET futuro → `202`),
-  `restart api` e chegada posterior da BET referenciada; o worker conclui a
-  pendência com saldo exato e reconciliação consistente.
+- **Teste H:** `PENDING_REFERENCE` (REFUND por HTTP referenciando um BET
+  futuro → `202`), `restart api` — a pendência sobrevive intocada — e chegada
+  posterior da BET **pelo SQS** (Envelope assinado): o worker conclui a
+  pendência cruzando os dois canais, com saldo exato, três lançamentos e
+  reconciliação consistente.
 
 O LocalStack de entrega fica publicado apenas em loopback
 (`JUNGLE_DELIVERY_SQS_PORT`, default `49570`) para o produtor assinante

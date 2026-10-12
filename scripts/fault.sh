@@ -193,27 +193,49 @@ $COMPOSE restart api >/dev/null 2>&1
 wait_replicas_healthy
 sleep 5
 
-deadline=$((SECONDS+90))
-until measured=1; do
-  if balance=$(wallet_state "$hWallet" 2>/dev/null) && [ "$balance" = "50.00" ]; then break; fi
-  if [ $SECONDS -gt $deadline ]; then fail "worker did not restore the pending reference (last balance: ${balance:-none})"; fi
-  sleep 3
-done
-bet=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$GATEWAY_URL/wagering/transactions" \
-  -H "Authorization: Bearer $PROVIDER_TOKEN" -H "Idempotency-Key: fault-h-bet-$runId" \
-  -H "Content-Type: application/json" \
-  -d '{"providerId":"provider-a","externalTransactionId":"fault-h-future-bet-'$runId'","playerId":"'$hPlayer'","walletId":"'$hWallet'","roundId":"fault-h-1","gameId":"fortune-chimp","kind":"BET","money":{"amount":"25.00","currency":"BRL"}}')
-assert "referenced bet processed" "200" "$bet"
-
+# The pending reference must survive the restart untouched: still suspended,
+# wallet untouched by a suspended operation.
 deadline=$((SECONDS+90))
 while true; do
-  balance=$(wallet_state "$hWallet" 2>/dev/null || echo pending)
-  if [ "$balance" = "100.00" ]; then break; fi
-  if [ $SECONDS -gt $deadline ]; then fail "pending reference was not concluded (last balance: $balance)"; fi
+  st=$(external_status "fault-h-refund-$runId" 2>/dev/null || echo none)
+  if [ "$st" = "PENDING_REFERENCE" ]; then if [ "$(wallet_state "$hWallet")" = "100.00" ]; then break; fi; fi
+  if [ $SECONDS -gt $deadline ]; then fail "pending reference changed across restart (last: $st)"; fi
   sleep 3
 done
-assert "refund concluded after bet arrival across restart" "100.00" "$balance"
-assert "refund now processed" "PROCESSED" "$(external_status "fault-h-refund-$runId")"
+assert "pending survived restart untouched" "PENDING_REFERENCE" "$st"
+# The referenced bet arrives by the OTHER channel: signed SQS envelope.
+cat > /tmp/fault-h-bet-$runId.json <<EOF
+{
+  "messageId": "fault-h-bet-$runId",
+  "type": "WagerTransactionRequested",
+  "occurredAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "data": {
+    "providerId": "provider-a",
+    "externalTransactionId": "fault-h-future-bet-$runId",
+    "idempotencyKey": "fault-h-future-bet-$runId",
+    "playerId": "$hPlayer",
+    "walletId": "$hWallet",
+    "roundId": "fault-h-1",
+    "gameId": "fortune-chimp",
+    "kind": "BET",
+    "money": {"amount": "25.00", "currency": "BRL"}
+  }
+}
+EOF
+SQS_ENDPOINT_URL="$SQS_URL" SQS_PROVIDER_KEY="$PROVIDER_KEY" \
+  go run ./cmd/send-wager -provider provider-a -file /tmp/fault-h-bet-$runId.json >/dev/null \
+  || fail "publishing referenced bet"
+
+deadline=$((SECONDS+120))
+while true; do
+  st=$(external_status "fault-h-refund-$runId" 2>/dev/null || echo none)
+  if [ "$st" = "PROCESSED" ]; then break; fi
+  if [ $SECONDS -gt $deadline ]; then fail "pending reference was not concluded (last: $st)"; fi
+  sleep 3
+done
+assert "refund concluded after bet arrival across restart" "100.00" "$(wallet_state "$hWallet")"
+assert "refund now processed" "PROCESSED" "$st"
+assert "ledger rows after cross-channel conclusion" "3" "$(ledger_count "$hWallet")"
 assert "reconciliation after pending reference" "true" "$(consistent "$hWallet")"
 
 rm -f /tmp/fault-wager-$runId.json /tmp/fault-h-$runId.json

@@ -945,9 +945,9 @@ SQS/inbox/consumidor com LocalStack (Fase 5).
 - [x] Expor três processos reais e confirmar paralelismo por carteira (réplicas do Compose atrás do gateway; Teste A/B executados entre processos).
 - [x] Kills literais e reinício com dados verificados por `scripts/fault.sh` no Compose de entrega (Testes E/F/H: kill -9 com aposta SQS em voo sem débito duplicado; kill com eventos não reconhecidos na outbox com drenagem pós-reinício; reinício com PENDING_REFERENCE retomada pelo worker e concluída após a BET chegar).
 - [x] JSON logging (`slog`) e métricas financeiras requisitadas (`jungle_wager_*`, `jungle_wallet_*`, histograma de duração) expostas em `/metrics` e verificadas no Compose de entrega; liveness/readiness mantidos.
-- [ ] Documentar `README.md`, `ARCHITECTURE.md`, ADRs e scripts de reprodução (README/ARCHITECTURE atualizados a cada incremento; revisão final pendente).
-- [ ] Executar `gofmt`, `go vet ./...`, `go test ./...`, `go test -race ./...` e integração (executados neste incremento; repetir na entrega).
-- [ ] Revisar eliminações, endpoints, `.env.example` e secrets ausentes.
+- [x] Documentar `README.md`, `ARCHITECTURE.md`, ADRs e scripts de reprodução — README com entrega/queues/smoke/faults, ARCHITECTURE com decisões por incremento e revisão final registrada.
+- [x] Executar `gofmt`, `go vet ./...` (`-tags=integration`), `go test -race ./...` e integração `-race `-count=1 — executados na revisão final, limpos.
+- [x] Revisar eliminações do §14, endpoints oficiais, `.env.example` e secrets — auditoria por ferramenta e matriz atualizada (ver "Revisão final de entrega").
 
 **Pronto quando:** alguém consegue clonar, subir com Compose, obter tokens, fazer operações e reproduzir testes sem intervenção manual oculta.
 
@@ -1219,3 +1219,32 @@ concorrentes entregam dois eventos uma única vez cada. Filas e schema isolados
 por teste (`IsolatedPostgresPool`). Pendências: kill literal de processos (Testes
 E/F literais), Compose de entrega e três processos (Fase 6). O projeto ainda não
 está concluído.
+
+### Revisão final de entrega — 12/10/2026
+
+Auditoria contra o enunciado oficial (snapshot `docs/reference`), seção por
+seção, com constatações e correções. Prova por ferramenta: `float32`/`float64`
+só em gauges de métrica — nunca em valor monetário; `panic` ausente do código
+de produção; domínio sem imports de infraestrutura; nenhuma credencial real no
+repositório; `.env.example` cobre as 11 variáveis lidas por `LoadConfig`;
+nenhum TODO/FIXME pendente.
+
+Correções da revisão:
+1. `fault.sh`: o Teste H publica o BET referenciado **pelo SQS** (cruzamento de
+   canais exigido pelo §13) e espera o status do REFUND em `PROCESSED` — o loop
+   anterior quebrava no saldo de abertura (100.00) e reportaria conclusão por
+   afobação; acrescentadas as asserções de pendência intocada pelo restart e de
+   três lançamentos (abertura + débito + crédito).
+2. Resíduos da matriz de conformidade eliminados (linhas marcavam pendências
+   já resolvidas por kills literais, métrica de divergência e cruzamento de
+   canais).
+
+Reprodução limpa executada nesta revisão (`docker compose down -v` + `docker
+compose up --build`): smoke OK (51 idênticas → 1 débito + 49 replays, par
+200/422 distinto, saldo 10.00, 3 lançamentos, reconciliação) e faults OK (E/F/H
+com kill -9 das três réplicas, reinício com `PENDING_REFERENCE` intacta e
+conclusão cruzada HTTP→SQS). Verificações: `gofmt` limpo; `go vet ./...`;
+`go test -race ./...` (14 pacotes ok); `go vet -tags=integration ./...`;
+`go test -race -tags=integration ./...` sem falhas; `make build` e imagens
+reconstruídas. Eliminatórias do §14 conferidas uma a uma contra evidência
+referenciada na matriz de conformidade.
