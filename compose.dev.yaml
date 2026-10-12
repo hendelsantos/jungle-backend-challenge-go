@@ -1,0 +1,29 @@
+# Dependencies for the current increment; the full delivery Compose adds API/SQS later.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: jungle
+      POSTGRES_PASSWORD: jungle-local
+      POSTGRES_DB: jungle
+    ports:
+      - "127.0.0.1:${JUNGLE_PG_PORT:-55432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jungle -d jungle"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    volumes:
+      - jungle-postgres:/var/lib/postgresql/data
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.0
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_HOSTNAME: "http://localhost:${JUNGLE_OIDC_PORT:-58080}"
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "127.0.0.1:${JUNGLE_OIDC_PORT:-58080}:8080"
+    volumes:
+      - ./deployments/keycloak:/opt/keycloak/data/import:ro
+volumes:
+  jungle-postgres:

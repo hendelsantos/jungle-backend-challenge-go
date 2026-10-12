@@ -4,7 +4,7 @@
 > **Desafio:** Processamento Distribuído de Apostas em Go  
 > **Origem:** <https://github.com/junglegaming/backend-challenge-go>  
 > **Data do planejamento:** 12/10/2026  
-> **Estado:** Fases 0 e 1 concluídas; Fase 2 quase completa: migrations verificadas e com trigger/CHECK automatizados, `pgx` (pool + `UnitOfWork`), abertura atômica, leitura de carteira, ledger com cursor e reconciliação em snapshot — tudo testado contra PostgreSQL real. Validações e progresso na seção 13. Runner de migrations, usuários de migração/runtime e Compose pendentes; `ProcessWager` e Fases 3–6 a seguir.
+> **Estado:** Fases 0, 1 e 2 concluídas; Fase 3 concluída na aplicação: `ProcessWager` e endpoints financeiros autenticados por OIDC/Keycloak verificados com IdP e PostgreSQL reais (readiness inclui ping do banco). Migrations verificadas com trigger/CHECK automatizados, `pgx` (pool + `UnitOfWork`), abertura atômica, leitura de carteira, ledger com cursor e reconciliação em snapshot. Validações e progresso na seção 13. Runner de migrations, usuários de migração/runtime, SQS/inbox/publisher, worker de referências e Compose de entrega pendentes (Fases 4–6).
 
 ---
 
@@ -829,9 +829,9 @@ concluído não conclui a API, autenticação ou demonstração distribuída. O 
 segue os critérios de OIDC/Keycloak e contratos HTTP da matriz; os requisitos do desafio
 só são encerrados com evidência no nível exigido.
 
-- [ ] Provisionar Keycloak; validar tokens, issuer/audience e roles.
-- [ ] Restringir operações internas e escopo por provedor.
-- [ ] Criar endpoints e contrato JSON/erros.
+- [x] Provisionar Keycloak; validar tokens, issuer/audience e roles.
+- [x] Restringir operações internas e escopo por provedor.
+- [x] Criar endpoints e contrato JSON/erros.
 - [x] Implementar `BET`, `WIN`, `LOSS` e idempotência persistente (caso de uso; HTTP/OIDC ainda pendentes).
 - [x] Implementar `REFUND`, `ROLLBACK` e unicidade de compensações (caso de uso).
 - [x] Armazenar saldo/versão originais para replay.
@@ -858,8 +858,38 @@ duplicadas, disputa 80+80, compensações concorrentes e progresso de carteira i
 Teste adicional com barreira força disputa da mesma identidade em carteiras diferentes
 e valida a conversão da violação única em conflito após retry.
 Os testes A/B/C estão demonstrados com goroutines e conexões reais; D (três processos),
-HTTP/SQS, reinicializações e recuperação ainda estão pendentes. Próximo incremento:
-endpoints financeiros e OIDC/Keycloak. Prazo interno de entrega: **14/10/2026**.
+HTTP/SQS, reinicializações e recuperação ainda estão pendentes. Prazo interno de entrega: **14/10/2026**.
+
+**Incremento endpoints autenticados e OIDC — 12/10/2026:** concluída a parte HTTP da
+Fase 3, reaproveitando as alterações locais existentes. `internal/adapters/oidc`
+ valida access tokens reais do Keycloak (go-oidc v3, JWKS com rotação, RS256,
+iss/aud/exp/nbf, `typ=Bearer`, `azp`); `internal/adapters/http` expõe os nove contratos
+oficiais reutilizando `CreateWallet`, `ProcessWager` e as queries, com decoder JSON
+estrito (apenas objetos/strings; números, `null`, duplicatas e campos extras rejeitados
+na fronteira), `Idempotency-Key` obrigatória usada como recebida, correlation ID
+validado/gerado e ecoado, timeout por request e respostas distinguíveis
+(201/200/202/400/401/403/404/409/422/503) com `error.code` estável. Autorização:
+roles `provider`+`provider_id` (claim do token, nunca do body) para apostas,
+`wallet:manage`/`wallet:read` para operações internas; isolamento entre provedores
+inclusive em replays, conflitos e consultas (`403`/`404` sem vazamento). `GET
+/health/ready` público faz ping real no PostgreSQL (check SQS entra com a mensageria).
+Realm `jungle` provisionado em `deployments/keycloak` (provedores a/b, serviço interno,
+clientes negativos de teste com audience errada e vida curta); `compose.dev.yaml` sobe
+PostgreSQL 17 + Keycloak 26.8. `GET /wagering/transactions/:id` exposto apenas ao
+provedor do registro; acesso interno adicional exige permissão explícita futura.
+Verificações: `gofmt`, `go vet ./...`, `go vet -tags=integration ./...`,
+`go test ./...`, `go test -race ./...` limpos; integração real com PostgreSQL e
+Keycloak (`go test -race -tags=integration ./... -count=1`) passou em todos os
+pacotes, incluindo a suíte HTTP: tokens ausente/malformado/tampered/audience
+errada/expirado (cliente de 3s) → `401`; sem role e interno em aposta → `403`;
+isolamento a/b em rota, consulta, replay e conflito sem efeitos financeiros
+(saldo/transações/ledger/outbox conferidos no banco); cinco operações com replay
+histórico (saldo original), LOSS sem ledger, REFUND+ROLLBACK, pendência `202`
+consultável; `409` nos dois conflitos; `422` com `INSUFFICIENT_FUNDS` e replay da
+rejeição; oito contratos inválidos → `400` sem efeitos; disputa 80+80 por HTTP
+(uma 200, uma 422, saldo 20.00); readiness `200`. Concorrência HTTP é
+intra-processo com banco real. Próximo incremento: worker de referências (Fase 4)
+e SQS/inbox/publisher (Fase 5).
 
 ### Fase 4 — Referências pendentes
 - [ ] Persistir `PENDING_REFERENCE` com deadline/backoff.

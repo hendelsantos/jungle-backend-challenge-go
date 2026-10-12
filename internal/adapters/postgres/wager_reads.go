@@ -136,3 +136,9 @@ func deref(value *string) string {
 	}
 	return *value
 }
+
+var _ ports.WagerQueryReader = (*WagerTransactionReader)(nil)
+
+func (r *WagerTransactionReader) FindByID(ctx context.Context, providerID string, id uuid.UUID) (wagering.State, error) {
+	return r.findOne(ctx, `WHERE provider_id = $1 AND id = $2`, providerID, id)
+}

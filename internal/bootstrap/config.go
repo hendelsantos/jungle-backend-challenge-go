@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"fmt"
+	oidcauth "github.com/hendelsantos/jungle-backend-challenge-go/internal/adapters/oidc"
 	"log/slog"
 	"net"
 	"os"
@@ -13,9 +14,11 @@ import (
 // database module starts and pgxpool.ParseConfig validates the value before
 // the HTTP listener opens; when empty, the application runs without a pool.
 type Config struct {
-	HTTPAddr    string
-	LogLevel    slog.Level
-	DatabaseURL string
+	HTTPAddr     string
+	LogLevel     slog.Level
+	DatabaseURL  string
+	OIDCIssuer   string
+	OIDCAudience string
 }
 
 func LoadConfig() (Config, error) {
@@ -47,6 +50,16 @@ func LoadConfig() (Config, error) {
 	}
 	if value, exists := os.LookupEnv("DATABASE_URL"); exists {
 		cfg.DatabaseURL = value
+	}
+	cfg.OIDCIssuer = os.Getenv("OIDC_ISSUER")
+	cfg.OIDCAudience = os.Getenv("OIDC_AUDIENCE")
+	if cfg.OIDCIssuer != "" || cfg.OIDCAudience != "" {
+		if cfg.DatabaseURL == "" {
+			return Config{}, fmt.Errorf("DATABASE_URL is required for authenticated business endpoints")
+		}
+		if err := (oidcauth.Config{Issuer: cfg.OIDCIssuer, Audience: cfg.OIDCAudience}).Validate(); err != nil {
+			return Config{}, err
+		}
 	}
 	return cfg, nil
 }

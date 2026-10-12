@@ -2,9 +2,9 @@
 
 Solução em desenvolvimento para o [desafio de processamento distribuído de apostas](https://github.com/junglegaming/backend-challenge-go).
 
-**Estado: Fases 0, 1 e 2 concluídas; processamento financeiro da Fase 3 implementado na aplicação.** O servidor HTTP com Uber Fx já oferece liveness e shutdown. O domínio financeiro, as migrations, a abertura atômica, as consultas com cursor, a reconciliação e `ProcessWager` foram testados com PostgreSQL real. `ProcessWager` trata BET, WIN, LOSS, REFUND e ROLLBACK com lock por carteira, idempotência persistente e gravação de saldo, transação, ledger e outbox no mesmo commit.
+**Estado: Fases 0, 1 e 2 concluídas; Fase 3 com endpoints financeiros autenticados implementados e verificados com Keycloak e PostgreSQL reais.** `ProcessWager` trata BET, WIN, LOSS, REFUND e ROLLBACK com lock por carteira, idempotência persistente e gravação de saldo, transação, ledger e outbox no mesmo commit. Os contratos HTTP oficiais estão expostos com autenticação OIDC (`client_credentials`), isolamento entre provedores e operações internas restritas; `GET /health/ready` verifica o PostgreSQL.
 
-Ainda faltam endpoints de negócio autenticados, Keycloak/OIDC, SQS/inbox/publisher, worker de referências, Compose, readiness e runner de migrations. Referências ausentes ficam persistidas em `PENDING_REFERENCE`, mas ainda não são retomadas automaticamente. O acompanhamento está em [PLANO_SISTEMA_JUNGLE_GO.md](PLANO_SISTEMA_JUNGLE_GO.md). Prazo interno: **14/10/2026**.
+Ainda faltam SQS/inbox/publisher, worker de referências, Compose de entrega completo, métricas e a demonstração com três processos independentes. Referências ausentes ficam persistidas em `PENDING_REFERENCE`, mas ainda não são retomadas automaticamente. O acompanhamento está em [PLANO_SISTEMA_JUNGLE_GO.md](PLANO_SISTEMA_JUNGLE_GO.md). Prazo interno: **14/10/2026**.
 
 A [matriz de conformidade](docs/CONFORMIDADE_DESAFIO.md) relaciona as exigências oficiais à implementação, aos testes e às pendências. O README oficial prevalece sobre o plano interno; a entrega só estará concluída com os requisitos obrigatórios demonstrados no ambiente exigido.
 
@@ -32,7 +32,9 @@ Encerre com `Ctrl+C` ou `SIGTERM`. O servidor aguarda requisições em andamento
 | --- | --- | --- |
 | `HTTP_ADDR` | `:8080` | Host e porta TCP entre 1 e 65535; exemplo `127.0.0.1:8081` |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
-| `DATABASE_URL` | vazia | Connection string PostgreSQL (scheme `postgres://` ou DSN keyword/value). Vazia: a aplicação sobe sem banco enquanto não há endpoints de negócio; definida: URL inválida ou banco inacessível impedem a inicialização |
+| `DATABASE_URL` | vazia | Connection string PostgreSQL (scheme `postgres://` ou DSN keyword/value). Vazia: a aplicação sobe apenas com health; definida: URL inválida ou banco inacessível impedem a inicialização |
+| `OIDC_ISSUER` | vazia | URL pública do realm no IdP (ex.: `http://localhost:58080/realms/jungle`). Definida: habilita os endpoints de negócio e torna `DATABASE_URL` obrigatória |
+| `OIDC_AUDIENCE` | vazia | Audience exigida nos access tokens (ex.: `jungle-api`). Obrigatória junto com `OIDC_ISSUER` |
 
 A aplicação lê variáveis do processo. `.env` não é carregado automaticamente. Para usar o exemplo local:
 
@@ -44,7 +46,71 @@ set +a
 make run
 ```
 
-Configuração inválida ou porta ocupada impede a inicialização. `/health/live` apenas indica que o processo responde; `/health/ready` será implementado com as verificações reais de PostgreSQL e SQS.
+Configuração inválida ou porta ocupada impede a inicialização. `/health/live` indica que o processo responde; `/health/ready` (registrado quando há banco) faz um ping real no PostgreSQL com prazo curto. O check de SQS será acrescentado com o módulo de mensageria.
+
+## Dependências locais de desenvolvimento
+
+`compose.dev.yaml` sobre PostgreSQL 17 e Keycloak 26.8 com o realm `jungle` importado (dois provedores, serviço interno e clientes de teste negativos; segredos fictícios):
+
+```sh
+docker compose -f compose.dev.yaml up -d   # postgres :55432, keycloak :58080
+```
+
+O schema é aplicado pelo harness de testes; para a aplicação, use o `TEST_DATABASE_URL` do exemplo abaixo ou aplique as migrations no banco destino.
+
+## API autenticada
+
+Com `OIDC_ISSUER`/`OIDC_AUDIENCE` configurados, os endpoints de negócio exigem access tokens do IdP. Obtenha um token real por `client_credentials`:
+
+```sh
+TOKEN=$(curl -s http://localhost:58080/realms/jungle/protocol/openid-connect/token \
+  -d grant_type=client_credentials \
+  -d client_id=provider-a-client \
+  -d client_secret=local-provider-a-client-secret | jq -r .access_token)
+```
+
+Fluxo completo (moeda sempre em string decimal; `Idempotency-Key` obrigatória no envio de operações):
+
+```sh
+# Serviço interno (wallet-internal-client) abre a carteira:
+INTERNAL=$(curl -s http://localhost:58080/realms/jungle/protocol/openid-connect/token \
+  -d grant_type=client_credentials -d client_id=wallet-internal-client \
+  -d client_secret=local-wallet-internal-client-secret | jq -r .access_token)
+curl -s -X POST http://localhost:8080/wallets -H "Authorization: Bearer $INTERNAL" \
+  -H 'Content-Type: application/json' \
+  -d '{"playerId":"0192f28f-5dc0-7d58-bdb2-814ad6a0f4a1","initialBalance":{"amount":"100.00","currency":"BRL"}}'
+# -> 201 {"id":...,"playerId":...,"balance":{"amount":"100.00","currency":"BRL"},"version":1}
+
+# Provedor autenticado envia uma aposta:
+curl -s -X POST http://localhost:8080/wagering/transactions \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: provider-a:transaction-123' \
+  -d '{"providerId":"provider-a","externalTransactionId":"transaction-123","playerId":"...","walletId":"...","roundId":"round-987","gameId":"fortune-chimp","kind":"BET","money":{"amount":"25.00","currency":"BRL"}}'
+# -> 200 {"transactionId":...,"status":"PROCESSED","balance":{"amount":"75.00","currency":"BRL"},"idempotentReplay":false}
+
+# Consultas do provedor e leitura interna:
+curl -s http://localhost:8080/wagering/transactions/<transactionId> -H "Authorization: Bearer $TOKEN"
+curl -s http://localhost:8080/providers/provider-a/wagering/transactions/transaction-123 -H "Authorization: Bearer $TOKEN"
+curl -s "http://localhost:8080/wallets/<walletId>/ledger?limit=50" -H "Authorization: Bearer $INTERNAL"
+curl -s -X POST http://localhost:8080/wallets/<walletId>/reconciliation -H "Authorization: Bearer $INTERNAL"
+```
+
+O `providerId` autorizado vem do claim `provider_id` do token validado; corpo, rota ou chave que apontem para outro provedor recebem `403` sem efeito financeiro. Operações internas de carteira exigem os roles `wallet:manage`/`wallet:read` do serviço interno.
+
+Respostas distinguíveis do contrato (corpo sempre traz `error.code` estável e `correlationId`):
+
+| Situação | HTTP | Código |
+| --- | --- | --- |
+| JSON/valor/payload inválido, `OPENING` externo | 400 | `INVALID_REQUEST` / `INVALID_WALLET_SCOPE` |
+| Token ausente, inválido, expirado ou audience errada | 401 | `UNAUTHENTICATED` |
+| Role ausente, provedor divergente da identidade | 403 | `FORBIDDEN` |
+| Recurso inexistente ou fora do escopo do provedor | 404 | `NOT_FOUND` |
+| Chave/ID externo reutilizados com conteúdo divergente | 409 | `CONFLICT` |
+| Rejeição definitiva de negócio (`INSUFFICIENT_FUNDS` etc.) | 422 | corpo com `failureCode` |
+| Pendência de referência | 202 | sem `balance` inventado |
+| Indisponibilidade transitória sem commit | 503 | `UNAVAILABLE`, repetir com a mesma identidade |
+
+Erros de contrato e autorização nunca produzem efeito financeiro; a suíte de integração verifica saldo, transações, ledger e outbox inalterados nesses casos.
 
 ## Verificar e compilar
 
@@ -65,6 +131,15 @@ docker exec jungle-pg pg_isready
 TEST_DATABASE_URL='postgres://postgres:verify@127.0.0.1:55432/postgres?sslmode=disable' \
   go test -race -tags=integration ./... -count=2
 docker rm -f jungle-pg
+```
+
+A suíte HTTP autenticada (`internal/adapters/http`) adicionalmente exige Keycloak real com o realm importado; sem `TEST_OIDC_ISSUER` ela pula:
+
+```sh
+docker compose -f compose.dev.yaml up -d
+TEST_OIDC_ISSUER='http://localhost:58080/realms/jungle' \
+TEST_DATABASE_URL='postgres://jungle:jungle-local@127.0.0.1:55432/jungle?sslmode=disable' \
+  go test -race -tags=integration ./internal/adapters/http/ -count=1 -v
 ```
 
 Para exercitar parsing e aritmética monetária com entradas geradas automaticamente:
@@ -98,7 +173,7 @@ Os eventos tipados (`WagerTransactionProcessed`, `WagerTransactionRejected`, `Wa
 - Erro SQL na segunda gravação da outbox desfaz carteira, transação, ledger e primeiro evento.
 - Uma carteira progride enquanto outra está bloqueada; reconciliação confirma os saldos após os cenários concorrentes e de reversão.
 
-Os testes usam conexões reais e goroutines em um processo por pacote. **Ainda não demonstram três instâncias independentes**, comunicação HTTP/SQS, reinício de processos ou autorização. Testes sem `TEST_DATABASE_URL` são ignorados, não aprovados. As decisões de hash, retries e transação estão em [ARCHITECTURE.md](ARCHITECTURE.md#processwager--processamento-transacional-compartilhado).
+Os testes usam infraestrutura real: a suíte HTTP valida tokens válidos, ausentes, malformados, com assinatura alterada, audience errada, sem role, expirados (cliente com vida curta no realm), isolamento entre provedores (inclusive em replays e conflitos) e a ausência de efeitos financeiros em acessos não autorizados. **Ainda não demonstram três instâncias independentes**, comunicação HTTP/SQS nem reinício de processos. Testes sem `TEST_DATABASE_URL`/`TEST_OIDC_ISSUER` são ignorados, não aprovados. As decisões de hash, retries e transação estão em [ARCHITECTURE.md](ARCHITECTURE.md#processwager--processamento-transacional-compartilhado).
 
 ## Docker
 
@@ -122,7 +197,8 @@ A imagem usa build multi-stage e executa com usuário sem privilégios. O Compos
 cmd/server/                        entrada do processo
 internal/application/             portas e casos de uso (command e query)
 internal/bootstrap/               configuração, composição Fx e lifecycle
-internal/adapters/http/           servidor e contrato HTTP
+internal/adapters/http/           servidor, contrato HTTP e autorização
+internal/adapters/oidc/           verificação de access tokens do IdP
 internal/adapters/postgres/       pool pgx, UnitOfWork, repositórios e reconciliador
 internal/domain/money/            valor monetário exato e testes
 internal/domain/wallet/           agregado de carteira e testes
@@ -131,12 +207,14 @@ internal/domain/ledger/           lançamento imutável do ledger e testes
 internal/domain/events/          eventos tipados de domínio e testes
 internal/testsupport/             harness de integração (build tag integration)
 migrations/                       schema versionado up/down (golang-migrate)
+deployments/                      realm Keycloak de desenvolvimento
+compose.dev.yaml                  dependências locais (PostgreSQL + Keycloak)
 docs/adr/                         decisões de arquitetura
 docs/reference/                   snapshot do enunciado e procedência
 references/                       clone local do desafio (ignorado pelo Git)
 ```
 
-As decisões e limites estão em [ARCHITECTURE.md](ARCHITECTURE.md). O próximo incremento inicia os endpoints financeiros e a autenticação OIDC com Keycloak, conforme a Fase 3. HTTP e SQS deverão chamar o mesmo `ProcessWager`; o `providerId` precisará vir da identidade autorizada na fronteira de entrada.
+As decisões e limites estão em [ARCHITECTURE.md](ARCHITECTURE.md). O próximo incremento inicia SQS/inbox/outbox publisher e o worker de referências, conforme as Fases 4 e 5; o consumidor SQS chamará o mesmo `ProcessWager` já usado pela API HTTP.
 
 O módulo e o remoto `origin` usam o repositório [hendelsantos/jungle-backend-challenge-go](https://github.com/hendelsantos/jungle-backend-challenge-go).
 

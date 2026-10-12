@@ -16,7 +16,7 @@ func New() *fx.App {
 	options := []fx.Option{
 		fx.Module("config", fx.Provide(LoadConfig)),
 		fx.Module("logging", fx.Provide(newLogger)),
-		fx.Module("http", fx.Provide(newHTTPServer), fx.Invoke(registerHTTP)),
+		fx.Module("http", fx.Provide(newHTTPServer)),
 		fx.WithLogger(func(logger *slog.Logger) fxevent.Logger {
 			return &fxevent.SlogLogger{Logger: logger}
 		}),
@@ -26,6 +26,12 @@ func New() *fx.App {
 	if os.Getenv("DATABASE_URL") != "" {
 		options = append(options, databaseModule(), applicationModule())
 	}
+	if os.Getenv("OIDC_ISSUER") != "" {
+		options = append(options, securityModule())
+	}
+	// Start the listener only after database ping and OIDC discovery succeed.
+	// Reverse shutdown order drains HTTP before closing its dependencies.
+	options = append(options, fx.Invoke(registerHTTP))
 	return fx.New(options...)
 }
 

@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/fx"
 
+	httpapi "github.com/hendelsantos/jungle-backend-challenge-go/internal/adapters/http"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/adapters/postgres"
 )
 
@@ -17,8 +19,15 @@ import (
 func databaseModule() fx.Option {
 	return fx.Module("database",
 		fx.Provide(newPostgresConfig, postgres.NewPool, postgres.NewUnitOfWork),
-		fx.Invoke(registerDatabase),
+		fx.Invoke(registerDatabase, registerReadiness),
 	)
+}
+
+// registerReadiness publishes the public readiness route when the database is
+// composed; the SQS check joins the same route with the messaging module.
+func registerReadiness(server *http.Server, pool *pgxpool.Pool) {
+	httpapi.RegisterReadiness(server.Handler.(*http.ServeMux),
+		httpapi.ReadinessCheck{Name: "postgres", Check: pool.Ping})
 }
 
 // newPostgresConfig keeps the dependency direction: bootstrap knows the
