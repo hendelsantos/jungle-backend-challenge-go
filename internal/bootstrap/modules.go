@@ -25,6 +25,9 @@ func New() *fx.App {
 	}
 	if os.Getenv("DATABASE_URL") != "" {
 		options = append(options, databaseModule(), applicationModule(), workersModule())
+		if os.Getenv("SQS_ENDPOINT_URL") != "" {
+			options = append(options, messagingModule())
+		}
 	}
 	if os.Getenv("OIDC_ISSUER") != "" {
 		options = append(options, securityModule())

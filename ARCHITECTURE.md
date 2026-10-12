@@ -4,7 +4,7 @@
 
 O [enunciado oficial](docs/reference/README_DESAFIO.md) define os requisitos. A [matriz de conformidade](docs/CONFORMIDADE_DESAFIO.md) separa as garantias já demonstradas das pendências de integração e entrega; decisões arquiteturais devem respeitar esse contrato.
 
-As Fases 0 e 1 estão concluídas: `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e os eventos tipados de domínio, com invariantes revisadas e verificadas. A Fase 2 está concluída: schema, pool, transações, abertura, leituras e reconciliação. A Fase 3 tem `ProcessWager` e a API HTTP autenticada por OIDC/Keycloak com evidência real. A Fase 4 está implementada: worker distribuído de referências pendentes com claim `SKIP LOCKED`, backoff e TTL (ver a seção dedicada). A direção é uma arquitetura hexagonal enxuta: domínio independente, casos de uso compartilhados por HTTP e SQS, adaptadores para entrada e persistência, e composição centralizada.
+As Fases 0 e 1 estão concluídas: `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e os eventos tipados de domínio, com invariantes revisadas e verificadas. A Fase 2 está concluída: schema, pool, transações, abertura, leituras e reconciliação. A Fase 3 tem `ProcessWager` e a API HTTP autenticada por OIDC/Keycloak com evidência real. A Fase 4 está implementada: worker distribuído de referências pendentes com claim `SKIP LOCKED`, backoff e TTL (ver a seção dedicada). A Fase 5 já tem consumidor SQS/inbox, assinatura por provedor e integração LocalStack; o publisher ainda falta. A direção é uma arquitetura hexagonal enxuta: domínio independente, casos de uso compartilhados por HTTP e SQS, adaptadores para entrada e persistência, e composição centralizada.
 
 Dependências planejadas:
 
@@ -252,7 +252,7 @@ No futuro consumidor SQS, a UnitOfWork externa da inbox será dona do commit e d
 
 **Evidências reais (`api_integration_test.go`, tag `integration`).** O fixture sobe a aplicação Fx completa contra PostgreSQL e Keycloak reais (sem `TEST_OIDC_ISSUER` a suíte pula) e obtém tokens por `client_credentials`. Verificado: tokens ausente/malformado/assinatura alterada/audience errada → `401`; sem role e serviço interno em aposta → `403`; provedor B em identidade/rota/consulta/replay/conflito do provedor A → `403`/`404` sem efeitos financeiros (saldo, transações, ledger e outbox conferidos no banco); as cinco operações com replay histórico (saldo original preservado após WIN), LOSS sem ledger, REFUND+ROLLBACK, pendência `202` consultável; `409` nos dois conflitos de identidade; rejeição `422` com `INSUFFICIENT_FUNDS` e replay da rejeição; oito contratos inválidos → `400` sem efeitos; token expirado do IdP real (cliente com vida de 3s) → `401`; duas apostas de 80 sobre 100 concorrentes → uma `200`, uma `422`, saldo 20.00 e efeitos exatos no banco; readiness público → `200` com `postgres: ok`.
 
-**Limites desta etapa.** SQS, worker de referências, publisher da outbox, métricas e a demonstração com três processos continuam pendentes; a concorrência HTTP é intra-processo (goroutines) com banco real. `GET /wagering/transactions/:id` exposto apenas ao provedor do registro; acesso interno autorizado a essa consulta, se necessário, será acrescentado com permissão explícita documentada.
+**Limites desta etapa.** Na conclusão da Fase 3 faltavam worker de referências e SQS, implementados nas seções seguintes. Publisher da outbox, métricas e a demonstração com três processos continuam pendentes; a concorrência HTTP é intra-processo (goroutines) com banco real. `GET /wagering/transactions/:id` exposto apenas ao provedor do registro; acesso interno autorizado a essa consulta, se necessário, será acrescentado com permissão explícita documentada.
 
 ## Worker de referências pendentes — Fase 4
 
@@ -274,7 +274,92 @@ No futuro consumidor SQS, a UnitOfWork externa da inbox será dona do commit e d
 
 ## Trabalho ainda pendente
 
-- SQS/inbox, outbox publisher com lease, DLQ e testes de falhas entre commit, publicação e confirmação; readiness deve incluir o check de SQS.
-- Runner de migrations, Compose de entrega reproduzível (aplicação + gateway + filas), métricas e demonstração com três processos independentes.
+- Outbox publisher com lease e testes de falhas entre commit, publicação e confirmação.
+- Runner de migrations, Compose de entrega reproduzível (aplicação + IdP + PostgreSQL + filas), métricas e demonstração com três processos independentes.
 
 As seções anteriores registram a evolução por incremento; as garantias atuais do processamento estão descritas acima. A entrega completa continua pendente.
+
+
+## Entrada SQS/inbox — Fase 5, incremento 1
+
+**Fluxo e fronteiras.** O adaptador SQS traduz o envelope oficial para
+`ConsumeWagerMessage`, que chama o mesmo `ProcessWager` do HTTP. `jsonx.Decode`
+centraliza o decoder estrito: UTF-8, strings/objetos, sem `null`, campos desconhecidos,
+chaves duplicadas ou números JSON; limite de 64 KiB no envelope e identidade
+não vazia de até 256 bytes. Domínio e aplicação continuam independentes do SDK.
+Fx compõe cliente, consumidor e portas; o loop recebe uma função tipada (method
+value), sem interface criada apenas para invocar um método.
+
+**Atomicidade.** `ConsumeWagerMessage` abre a UnitOfWork externa; a UnitOfWork de
+`ProcessWager` encontra a transação no contexto e a reutiliza sem commit próprio.
+O fluxo financeiro ocorre antes do `INSERT ... ON CONFLICT DO NOTHING` na inbox.
+Na colisão, hash e transação vinculada precisam coincidir e `completed_at` precisa
+existir; conflito devolve erro e desfaz TODAS as escritas financeiras daquela
+tentativa. A chave primária `(consumer_name, message_id)` decide corridas entre
+instâncias. Não há cache de deduplicação em memória nem dependência do FIFO para
+integridade. Deadlock/serialização são classificados pela UnitOfWork externa,
+que faz rollback antes de repetir tudo (máximo quatro tentativas SQL). `25P02`
+isolado não autoriza retry: a causa original precisa chegar ao dono da transação.
+
+**Dois hashes.** A inbox guarda SHA-256 dos bytes exatos do envelope. Mesmo
+`messageId` com espaços/conteúdo diferentes é conflito. A operação usa o hash
+canônico de negócio já compartilhado com HTTP; IDs/correlação/timestamps de
+transporte não modificam sua idempotência. Duplicatas com novos envelopes podem
+ter inboxes distintas, mas retornam a única transação financeira persistida.
+
+**Identidade do produtor.** Atributos SQS não constituem identidade confiável.
+`providerId` e `signature` transportam HMAC-SHA256 de
+`jungle-wager-v1\0 + providerId + \0 + corpo bruto`. `SQS_PROVIDER_KEYS` vincula cada
+provedor à sua chave; `hmac.Equal` compara assinaturas em tempo constante, e o
+provedor autenticado deve corresponder ao corpo antes de consultar/reexecutar
+operações. O CLI recebe só a chave daquele produtor. Chaves não entram nos logs,
+na inbox ou na outbox. O corpo oficial permanece igual. São chaves fictícias de
+desenvolvimento, sem rotação automática: remoção/troca exige coordenar mensagens
+pendentes. O broker local exposto em loopback não demonstra IAM de produção;
+implantação real exigiria configuração de credenciais/IAM, gestão de chaves e
+controle de acesso à fila. HTTP mantém OIDC/Keycloak externo.
+
+**Entrega e falhas.** `DeleteMessage` sucede o commit; `PENDING_REFERENCE` já
+persistido pode concluir a inbox. Um erro de commit com resultado desconhecido
+não é interpretado como rollback ou sucesso: não confirma a mensagem, que volta
+pelo broker. A reentrega com mesma identidade resolve o registro durável e não
+movimenta novamente. Teste injeta perda da resposta APÓS um commit PostgreSQL
+real e exige replay da inbox e da operação. Rejeições de negócio confirmadas são
+terminais. Erros de contrato/autorização/conflito vão diretamente à DLQ por
+send-then-delete, preservando corpo e atributos; ID de deduplicação da DLQ deriva
+do ID de transporte original. Se send ou delete falhar, a origem pode reaparecer;
+a cópia na DLQ também tem semântica at-least-once, nunca exactly-once.
+
+**Fila e prazos.** Provisionamento reconcilia FIFO/redrive/visibilidade;
+`maxReceiveCount=3`, visibilidade 30s e deduplicação por conteúdo desligada.
+O produtor agrupa por carteira e usa SHA-256 do corpo como dedup ID. Poll espera
+10s (request limitado a 15s); um item por receive evita lote local envelhecer
+invisível; processamento/ack limitado a 10s. Falhas transitórias usam
+`ChangeMessageVisibility` com 1s/2s/4s; o broker faz redrive após três recebimentos.
+Sem resposta dessa chamada, a visibilidade original limita a recuperação.
+Provisionamento tem deadline real de 30s; readiness verifica as três filas com
+o deadline da rota. SDK Go v2 usa endpoint explícito e credenciais locais.
+
+**Shutdown.** Fx para HTTP, cancela consumidor/workers e só depois fecha o pool.
+Cancelamento interrompe polling/processamento; SQL não confirmado é revertido.
+Receipt conhecido tem visibilidade liberada com contexto independente limitado
+a 2s. Um receive cancelado antes de entregar seu receipt pode ter sido aceito
+pelo broker: a mensagem reaparece em até 30s. O teste aguarda essa janela e soma
+mensagens visíveis, invisíveis e atrasadas para não inferir ack pela ausência de
+mensagens visíveis. Shutdown com SQL em andamento verifica rollback real e
+reentrega imediata do receipt conhecido.
+
+**Evidências.** PostgreSQL 17, Keycloak 26.8.0 e LocalStack Community 4.14.0 reais.
+Suítes exercitam aposta/duplicata, rejeição terminal, pendência, envelope inválido,
+assinatura ausente/provedor forjado, conflito na inbox com rollback financeiro,
+CHECK da inbox falhando e redrive após três tentativas, falha após commit,
+resposta de commit perdida, shutdown, reconciliação de políticas existentes e
+readiness 503 por fila removida. HTTP autenticado e SQS executam mesma aposta nas
+duas ordens e concorrentemente: saldo 75, versão 2, duas transações/dois lançamentos
+(abertura + BET), quatro eventos e reconciliação consistente.
+
+**Limites.** Testes usam filas exclusivas e excluem só recursos próprios. Falhas
+são injetadas em fronteiras reais do commit; não substituem interrupção literal
+de processos. Fila de eventos provisionada não significa publisher implementado.
+Métricas, dois publishers, reinícios, três processos e Compose de entrega ficam
+para os próximos incrementos.

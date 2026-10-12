@@ -1,96 +1,34 @@
 package httpapi
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
 	"mime"
 	"net/http"
-	"strings"
-	"unicode/utf8"
+
+	"github.com/hendelsantos/jungle-backend-challenge-go/internal/jsonx"
 )
 
+// errInvalidJSON keeps the HTTP error classification stable; the strict
+// decoding rules live in jsonx, shared with the SQS boundary.
 var errInvalidJSON = errors.New("invalid request JSON")
 
 const maxRequestBytes = 64 << 10
 
-// All input fields in these contracts are objects or strings. Validate tokens
-// without float conversion; reject ambiguous duplicates, null and extra values.
+// decodeRequest applies the HTTP-specific guards (content type, size) and the
+// shared strict JSON boundary: objects and strings only, so no monetary value
+// can pass through float64, and ambiguous duplicates are rejected.
 func decodeRequest(w http.ResponseWriter, r *http.Request, destination any) error {
 	media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || media != "application/json" {
 		return errInvalidJSON
 	}
 	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBytes))
-	if err != nil || !utf8.Valid(data) {
+	if err != nil {
 		return errInvalidJSON
 	}
-	scanner := json.NewDecoder(bytes.NewReader(data))
-	scanner.UseNumber()
-	if err := scanObject(scanner, 0); err != nil {
-		return errInvalidJSON
-	}
-	if _, err := scanner.Token(); !errors.Is(err, io.EOF) {
-		return errInvalidJSON
-	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(destination); err != nil {
-		return errInvalidJSON
-	}
-	return nil
-}
-
-func scanObject(d *json.Decoder, depth int) error {
-	if depth > 8 {
-		return errInvalidJSON
-	}
-	token, err := d.Token()
-	if err != nil || token != json.Delim('{') {
-		return errInvalidJSON
-	}
-	keys := map[string]bool{}
-	for d.More() {
-		key, err := d.Token()
-		if err != nil {
-			return errInvalidJSON
-		}
-		name, ok := key.(string)
-		if !ok {
-			return errInvalidJSON
-		}
-		normalized := strings.ToLower(name)
-		if keys[normalized] {
-			return errInvalidJSON
-		}
-		keys[normalized] = true
-		// Decode the raw value to recurse while retaining its exact bytes.
-		var raw json.RawMessage
-		if err := d.Decode(&raw); err != nil {
-			return errInvalidJSON
-		}
-		raw = bytes.TrimSpace(raw)
-		if len(raw) == 0 {
-			return errInvalidJSON
-		}
-		switch raw[0] {
-		case '{':
-			child := json.NewDecoder(bytes.NewReader(raw))
-			child.UseNumber()
-			if err := scanObject(child, depth+1); err != nil {
-				return err
-			}
-		case '"':
-			var value string
-			if err := json.Unmarshal(raw, &value); err != nil {
-				return errInvalidJSON
-			}
-		default:
-			return errInvalidJSON
-		}
-	}
-	if token, err := d.Token(); err != nil || token != json.Delim('}') {
+	if err := jsonx.Decode(data, destination); err != nil {
 		return errInvalidJSON
 	}
 	return nil

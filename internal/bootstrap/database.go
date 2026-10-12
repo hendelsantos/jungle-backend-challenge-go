@@ -12,6 +12,7 @@ import (
 
 	httpapi "github.com/hendelsantos/jungle-backend-challenge-go/internal/adapters/http"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/adapters/postgres"
+	sqsadapter "github.com/hendelsantos/jungle-backend-challenge-go/internal/adapters/sqs"
 )
 
 // databaseModule is composed only when DATABASE_URL is configured; until the
@@ -25,9 +26,19 @@ func databaseModule() fx.Option {
 
 // registerReadiness publishes the public readiness route when the database is
 // composed; the SQS check joins the same route with the messaging module.
-func registerReadiness(server *http.Server, pool *pgxpool.Pool) {
-	httpapi.RegisterReadiness(server.Handler.(*http.ServeMux),
-		httpapi.ReadinessCheck{Name: "postgres", Check: pool.Ping})
+type readinessDeps struct {
+	fx.In
+	Server *http.Server
+	Pool   *pgxpool.Pool
+	SQS    *sqsadapter.ManagedClient `optional:"true"`
+}
+
+func registerReadiness(d readinessDeps) {
+	checks := []httpapi.ReadinessCheck{{Name: "postgres", Check: d.Pool.Ping}}
+	if d.SQS != nil {
+		checks = append(checks, httpapi.ReadinessCheck{Name: "sqs", Check: d.SQS.Ready})
+	}
+	httpapi.RegisterReadiness(d.Server.Handler.(*http.ServeMux), checks...)
 }
 
 // newPostgresConfig keeps the dependency direction: bootstrap knows the

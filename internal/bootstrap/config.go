@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	oidcauth "github.com/hendelsantos/jungle-backend-challenge-go/internal/adapters/oidc"
+	sqsadapter "github.com/hendelsantos/jungle-backend-challenge-go/internal/adapters/sqs"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/application/command"
 )
 
@@ -24,6 +26,10 @@ type Config struct {
 	OIDCAudience            string
 	ReferenceTTL            time.Duration
 	ReferenceWorkerInterval time.Duration
+	SQSQueuePrefix          string
+	SQSEndpointURL          string
+	SQSRegion               string
+	SQSProviderKeys         sqsadapter.ProviderKeys
 }
 
 func LoadConfig() (Config, error) {
@@ -78,6 +84,27 @@ func LoadConfig() (Config, error) {
 			return Config{}, fmt.Errorf("DATABASE_URL is required for authenticated business endpoints")
 		}
 		if err := (oidcauth.Config{Issuer: cfg.OIDCIssuer, Audience: cfg.OIDCAudience}).Validate(); err != nil {
+			return Config{}, err
+		}
+	}
+	cfg.SQSQueuePrefix = os.Getenv("SQS_QUEUE_PREFIX")
+	cfg.SQSEndpointURL = os.Getenv("SQS_ENDPOINT_URL")
+	cfg.SQSRegion = os.Getenv("SQS_REGION")
+	if cfg.SQSRegion == "" {
+		cfg.SQSRegion = "us-east-1"
+	}
+	// The consumer is transactional: it only composes with the database.
+	if cfg.SQSEndpointURL != "" && cfg.DatabaseURL == "" {
+		return Config{}, fmt.Errorf("DATABASE_URL is required for the SQS consumer")
+	}
+	if cfg.SQSEndpointURL != "" {
+		if err := (sqsadapter.Config{EndpointURL: cfg.SQSEndpointURL, Region: cfg.SQSRegion, QueuePrefix: cfg.SQSQueuePrefix}).Validate(); err != nil {
+			return Config{}, err
+		}
+		if err := json.Unmarshal([]byte(os.Getenv("SQS_PROVIDER_KEYS")), &cfg.SQSProviderKeys); err != nil {
+			return Config{}, fmt.Errorf("SQS_PROVIDER_KEYS must be a JSON object of provider signing keys")
+		}
+		if err := cfg.SQSProviderKeys.Validate(); err != nil {
 			return Config{}, err
 		}
 	}

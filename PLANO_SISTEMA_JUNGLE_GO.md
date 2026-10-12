@@ -895,7 +895,8 @@ e SQS/inbox/publisher (Fase 5).
 - [x] Persistir `PENDING_REFERENCE` com deadline/backoff.
 - [x] Worker distribuído com `SKIP LOCKED` e shutdown seguro.
 - [x] Rejeitar referência não encontrada, inválida, terminal ou mismatched conforme política.
-- [x] Testar chegada posterior, expiração e reinicialização.
+- [x] Testar chegada posterior, expiração e retomada por nova chamada ao worker.
+- [ ] Demonstrar recuperação por reinicialização literal de processos (Fase 6).
 
 **Pronto quando:** nenhuma referência pendente depende da memória de um processo.
 
@@ -928,11 +929,12 @@ reinício literal de três processos ficam para a Fase 5/6. Próximo incremento:
 SQS/inbox/consumidor com LocalStack (Fase 5).
 
 ### Fase 5 — SQS, inbox e outbox
-- [ ] LocalStack com entrada FIFO, DLQ, redrive, fila de eventos.
-- [ ] Consumidor SQS com inbox e UnitOfWork compartilhada.
-- [ ] `DeleteMessage` somente após commit; retry e erros permanentes.
+- [x] LocalStack com entrada FIFO, DLQ, redrive, fila de eventos.
+- [x] Consumidor SQS com inbox e UnitOfWork compartilhada.
+- [x] `DeleteMessage` somente após commit; retry e erros permanentes.
 - [ ] Publisher da outbox com concorrência, lease/backoff e event IDs estáveis.
-- [ ] Testar cross-channel HTTP/SQS, falha após commit, falha entre publish/ack.
+- [x] Testar cross-channel HTTP/SQS e falha injetada após commit com broker real.
+- [ ] Testar interrupção literal do consumidor e falha entre publish/ack.
 
 **Pronto quando:** todas as garantias de at-least-once e recuperação passam nos containers reais.
 
@@ -1057,3 +1059,17 @@ A entrega será considerada pronta para revisão quando for possível:
 ### Revisão do backoff de referências (12/10/2026)
 
 O backoff limita o expoente antes do deslocamento de bits: 1s, 2s, …, 256s e teto de 5min a partir da décima tentativa. Isso evita overflow de `time.Duration` em pendências duradouras; TTL e regras de reagendamento permanecem iguais. Teste cobre limites, 1.000 tentativas e o maior `int` da plataforma.
+
+
+### Fase 5, incremento 1 — SQS/inbox (12/10/2026)
+
+Concluído o consumidor transacional, provisionamento local automático no startup,
+redrive após três recebimentos, assinatura por provedor, readiness SQS e shutdown.
+Validação: `make check`, `go vet -tags=integration ./...` e suíte completa
+`go test -race -tags=integration ./... -count=1` com PostgreSQL, Keycloak e LocalStack
+reais passaram. Testes de integração não foram ignorados por falta de ambiente.
+Filas isoladas por teste, sem purge de filas de desenvolvimento. Evidências e
+limites detalhados no README, arquitetura e matriz de conformidade.
+
+Próximo incremento: publisher da outbox (claim/lease, backoff, eventos estáveis,
+dois publishers e falhas entre publish/ack). O projeto ainda não está concluído.

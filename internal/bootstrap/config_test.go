@@ -123,3 +123,24 @@ func TestLoadConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestSQSConfigRequiresProviderTrustAndDatabase(t *testing.T) {
+	t.Setenv("SQS_ENDPOINT_URL", "http://localhost:4566")
+	t.Setenv("DATABASE_URL", "postgres://local")
+	t.Setenv("SQS_PROVIDER_KEYS", `{"provider-a":"local-test-provider-a-key-32-bytes-minimum"}`)
+	if _, err := LoadConfig(); err != nil {
+		t.Fatal(err)
+	}
+	for _, invalid := range []string{"", `{}`, `{"provider-a":"short"}`, `null`, `{"":"local-test-provider-a-key-32-bytes-minimum"}`} {
+		t.Run(invalid, func(t *testing.T) {
+			t.Setenv("SQS_PROVIDER_KEYS", invalid)
+			if _, err := LoadConfig(); err == nil {
+				t.Fatal("missing trust accepted")
+			}
+		})
+	}
+	t.Setenv("DATABASE_URL", "")
+	if _, err := LoadConfig(); err == nil {
+		t.Fatal("SQS enabled without transactional database")
+	}
+}

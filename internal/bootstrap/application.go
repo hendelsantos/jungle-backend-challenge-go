@@ -21,6 +21,7 @@ func applicationModule() fx.Option {
 			postgres.NewWagerTransactionReader,
 			postgres.NewLedgerRepository,
 			postgres.NewOutboxRepository,
+			postgres.NewInboxRepository,
 			postgres.NewWalletReader,
 			postgres.NewLedgerReader,
 			postgres.NewReconciler,

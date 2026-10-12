@@ -14,6 +14,7 @@ func TestRetryClassification(t *testing.T) {
 		retry            bool
 	}{
 		{"40P01", "", true}, {"40001", "", true},
+		{"25P02", "", false},
 		{"23505", "wager_transactions_provider_idempotency_uidx", true},
 		{"23505", "wager_transactions_provider_external_uidx", true},
 		{"23505", "outbox_events_pkey", false},
