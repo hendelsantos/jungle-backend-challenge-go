@@ -2,9 +2,9 @@
 
 Solução em desenvolvimento para o [desafio de processamento distribuído de apostas](https://github.com/junglegaming/backend-challenge-go).
 
-**Estado: Fases 0–4 implementadas; Fase 5 com consumidor SQS/inbox e publisher da outbox com LocalStack.** `ProcessWager` trata BET, WIN, LOSS, REFUND e ROLLBACK com lock por carteira, idempotência persistente e gravação de saldo, transação, ledger e outbox no mesmo commit. Os contratos HTTP oficiais estão expostos com autenticação OIDC (`client_credentials`), isolamento entre provedores e operações internas restritas; `GET /health/ready` verifica PostgreSQL e, quando configurado, SQS. Operações com referência ausente ficam `PENDING_REFERENCE` e um worker distribuído as retoma com backoff exponencial e TTL, concluindo, reagendando ou rejeitando com `REFERENCE_NOT_FOUND`. Eventos comprometidos são publicados pós-commit na fila de eventos por um publisher com claim/lease, backoff e republicação com mesmo `eventId`.
+**Estado: Fases 0–5 implementadas; Fase 6 com Compose de entrega (três réplicas + gateway) e smoke verificados.** `ProcessWager` trata BET, WIN, LOSS, REFUND e ROLLBACK com lock por carteira, idempotência persistente e gravação de saldo, transação, ledger e outbox no mesmo commit. Os contratos HTTP oficiais estão expostos com autenticação OIDC (`client_credentials`), isolamento entre provedores e operações internas restritas; `GET /health/ready` verifica PostgreSQL e, quando configurado, SQS. Operações com referência ausente ficam `PENDING_REFERENCE` e um worker distribuído as retoma com backoff exponencial e TTL, concluindo, reagendando ou rejeitando com `REFERENCE_NOT_FOUND`. Eventos comprometidos são publicados pós-commit na fila de eventos por um publisher com claim/lease, backoff e republicação com mesmo `eventId`.
 
-Ainda faltam Compose de entrega completo, métricas financeiras restantes e a demonstração com três processos independentes. O acompanhamento está em [PLANO_SISTEMA_JUNGLE_GO.md](PLANO_SISTEMA_JUNGLE_GO.md). Prazo interno: **14/10/2026**.
+Ainda faltam kill literal de containers nos pontos críticos, mensagem SQS demonstrada no ambiente de entrega, métricas financeiras restantes e a revisão final. O acompanhamento está em [PLANO_SISTEMA_JUNGLE_GO.md](PLANO_SISTEMA_JUNGLE_GO.md). Prazo interno: **14/10/2026**.
 
 A [matriz de conformidade](docs/CONFORMIDADE_DESAFIO.md) relaciona as exigências oficiais à implementação, aos testes e às pendências. O README oficial prevalece sobre o plano interno; a entrega só estará concluída com os requisitos obrigatórios demonstrados no ambiente exigido.
 
@@ -61,7 +61,6 @@ Configuração inválida ou porta ocupada impede a inicialização. `/health/liv
 ```sh
 docker compose -f compose.dev.yaml up -d   # postgres :55432, keycloak :58080, LocalStack :4566
 ```
-
 Neste incremento o harness aplica as migrations reais em um banco vazio. O runner
 oficial é o comando `migrate`:
 
@@ -77,6 +76,40 @@ make run
 
 O harness também cria registros de teste com identidades únicas. A aplicação usa
 `DATABASE_URL`; `TEST_DATABASE_URL` é exclusivo dos testes.
+
+## Entrega com Compose (três processos)
+
+A partir de um checkout limpo, um comando sobe o ambiente completo de entrega —
+PostgreSQL, job de migrations (golang-migrate), Keycloak com o realm `jungle`,
+LocalStack SQS, três réplicas independentes da aplicação e o gateway nginx —
+isolado do ambiente de desenvolvimento por projeto e por portas de loopback:
+
+```sh
+docker compose -f docker-compose.yml up --build -d
+docker compose -f docker-compose.yml ps    # gateway, api-1/2/3, keycloak, localstack, postgres: healthy
+```
+
+Portas publicadas (apenas loopback):
+- gateway `9080` → três réplicas (upstream resolvido por request no DNS do Docker);
+- IdP `59080` → Keycloak publico da máquina; o issuer validado pelas réplicas é
+  `http://keycloak:8080/realms/jungle` (divisão dev permitida pelo §6.2);
+- PostgreSQL não é publicado.
+
+O `scripts/smoke.sh` reproduz o cenário oficial de ponta a ponta contra essa
+instância: tokens `client_credentials` reais, abertura de `100.00 BRL`,
+**50 BETs idênticas de `50.00` concorrentes via gateway → exatamente um débito
+e 49 replays idempotentes**, **par concorrente de BETs distintas `40.00` →
+`200`/`422 INSUFFICIENT_FUNDS`**, saldo final `10.00`, três lançamentos no
+ledger e reconciliação `consistent:true`:
+
+```sh
+GATEWAY_URL=http://localhost:9080 KEYCLOAK_URL=http://localhost:59080 bash scripts/smoke.sh
+```
+
+Os logs por container comprovam as três réplicas na rota (`docker logs
+jungle-delivery-api-1|2|3`). As chaves SQS, segredos do Keycloak e credenciais
+do banco são exclusivos de desenvolvimento — nunca publicar o ambiente. Para
+zerar, `docker compose -f docker-compose.yml down -v`.
 
 ## API autenticada
 

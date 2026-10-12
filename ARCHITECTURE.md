@@ -274,11 +274,51 @@ No futuro consumidor SQS, a UnitOfWork externa da inbox será dona do commit e d
 
 ## Trabalho ainda pendente
 
-- Compose de entrega reproduzível a partir de checkout limpo (app + migrations + IdP + filas + gateway).
-- Kill literal de processos nos pontos críticos (Testes E/F) e reinício com pendências retomadas.
-- Métricas financeiras restantes e demonstração com três processos independentes.
+- Kill literal de containers nos pontos críticos (Testes E/F) e reinício com pendências retomadas.
+- Suíte de integração/falhas e mensagem SQS apontadas ao ambiente de entrega; métricas financeiras restantes.
 
 As seções anteriores registram a evolução por incremento; as garantias atuais do processamento estão descritas acima. A entrega completa continua pendente.
+
+
+## Compose de entrega e três processos — Fase 6, incremento 2
+
+**Composição.** `docker-compose.yml`, projeto `jungle-delivery`: `postgres` 17,
+job `migrate` (o mesmo binário do runner com `entrypoint` próprio, esperando o
+banco saudável), `keycloak` 26.8 com o realm importado e healthcheck na porta
+de management 9000, `localstack` SQS 4.14.0, três réplicas do serviço `api`
+(`deploy.replicas`, cada uma um processo com pool próprio e healthcheck
+`/health/live`) e um `gateway` nginx 1.27 publicado apenas em loopback
+(`9080`), junto ao IdP (`59080`).
+
+**Ordem de partida.** `postgres` saudável → `migrate` aplica o schema completo
+e termina com código zero → réplicas iniciam, bloqueadas por `keycloak` e
+`localstack` saudáveis (a inicialização da app faz discovery OIDC e provisiona
+filas). Assim nenhuma réplica consulta um esquema anterior às migrations.
+
+**Gateway.** O `nginx.conf` resolve o upstream por request com `resolver
+127.0.0.11` e `set $upstream http://api:8080`: o DNS do Docker rodas entre os
+IPs das réplicas, sem o truque de IP fixado de um bloco `upstream` estático
+(que sofre o cache do nginx na resolução inicial). `X-Request-ID` adicional
+para correlação local.
+
+**Issuer.** `KC_HOSTNAME=http://keycloak:8080` faz tokens e `jwks_uri` apontarem
+para o nome interno, resolvível pelas réplicas; a máquina hospedeira obtém
+tokens pela porta publicada sem conhecer esse hostname. Essa divisão de issuer
+URL pública vs endereço interno é a variação de desenvolvimento prevista no §6.2
+e não muda a validação estrita do `iss`.
+
+**Smoke (`scripts/smoke.sh`).** Reproduz o cenário oficial: token
+`client_credentials` real, abertura de 100.00, 50 BETs idênticas concorrentes
+via gateway com uma única processada (o resto replays com resultado armazenado),
+par concorrente distinto com 200/422, saldo final exato, três lançamentos e
+reconciliação consistente. Contrato respeitado: a chave de idempotência existe
+apenas no header `Idempotency-Key`; o body não a carrega (decoder estrito).
+Logs por container mostram a distribuição (21/18/13 requisições nas réplicas).
+
+**Evidências.** `down -v` + `up --build` a partir de limpo, réplicas healthy em
+~1min, smoke aprovado, `/metrics` acessível pelo gateway e encerramento com
+remoção de volumes/redes. Limites: kill literal de containers nos pontos
+críticos e a suíte de integração de falhas continuam pendentes (Fase 6).
 
 
 ## Runner de migrations — Fase 6, incremento 1

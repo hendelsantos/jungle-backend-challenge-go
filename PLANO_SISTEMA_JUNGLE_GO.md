@@ -941,12 +941,12 @@ SQS/inbox/consumidor com LocalStack (Fase 5).
 
 ### Fase 6 — Três instâncias, observabilidade e entrega
 - [x] Runner de migrations operacional (`cmd/migrate` com golang-migrate, Makefile) verificado com PostgreSQL real.
-- [ ] Compose de entrega reproduzível a partir de checkout limpo (app + migrations + IdP + filas + gateway).
-- [ ] Expor três processos reais e confirmar paralelismo por carteira.
-- [ ] Testar interrupções, retries, DLQ, auditoria e reconciliação final.
-- [ ] JSON logging, métricas financeiras restantes, liveness/readiness.
-- [ ] Documentar `README.md`, `ARCHITECTURE.md`, ADRs e scripts de reprodução.
-- [ ] Executar `gofmt`, `go vet ./...`, `go test ./...`, `go test -race ./...` e integração.
+- [x] Compose de entrega reproduzível a partir de checkout limpo (app + migrations + IdP + filas + gateway), verificado com `down -v` + `up --build` + smoke.
+- [x] Expor três processos reais e confirmar paralelismo por carteira (réplicas do Compose atrás do gateway; Teste A/B executados entre processos).
+- [ ] Testar interrupções, retries, DLQ, auditoria e reconciliação final (kill literal do Consumidor/publisher nos containers).
+- [ ] JSON logging (done; verificação final), métricas financeiras restantes, liveness/readiness (done).
+- [ ] Documentar `README.md`, `ARCHITECTURE.md`, ADRs e scripts de reprodução (README/ARCHITECTURE atualizados a cada incremento; revisão final pendente).
+- [ ] Executar `gofmt`, `go vet ./...`, `go test ./...`, `go test -race ./...` e integração (executados neste incremento; repetir na entrega).
 - [ ] Revisar eliminações, endpoints, `.env.example` e secrets ausentes.
 
 **Pronto quando:** alguém consegue clonar, subir com Compose, obter tokens, fazer operações e reproduzir testes sem intervenção manual oculta.
@@ -969,6 +969,41 @@ histórico vazio limpo. No banco de desenvolvimento (schema aplicado pelo harnes
 sem histórico do golang-migrate), `up` se recusou corretamente a reaplicar e
 `force 4` registrou o estado atual sem tocar dados — `version` mostra 4 e `up`
 seguinte foi no-op. Compose de entrega e três processos pendentes.
+
+### Fase 6, incremento 2 — Compose de entrega e três processos (12/10/2026)
+
+`docker-compose.yml` (projeto isolado `jungle-delivery`, loopback apenas) sobe
+PostgreSQL 17, Keycloak 26.8 (issuer interno `http://keycloak:8080`, porta de
+management 9000 para healthcheck, realm `jungle` importado), LocalStack SQS
+4.14.0, job `migrate` (o mesmo binário do runner, `depends_on` PostgreSQL
+saudável), três réplicas `api` com pools independentes e healthcheck
+`/health/live`, e gateway nginx (`deployments/gateway/nginx.conf`) que resolve
+o upstream por request no DNS do Docker para rodas entre réplicas. Portas
+publica: gateway `9080` e Keycloak `59080` (loopback), evitando colisão com o
+`compose.dev.yaml`; overridable por `JUNGLE_DELIVERY_OIDC_PORT`/
+`JUNGLE_DELIVERY_GATEWAY_PORT`.
+
+Contrato HTTP aplicado ao script: `scripts/smoke.sh` usa a chave de
+idempotência apenas no header `Idempotency-Key` (body com `idempotencyKey` é
+contrato inválido — decoder estrito rejeita `400`). Fluxo do smoke: token
+`client_credentials` real (wallet-internal e provider-a), abertura de carteira
+100.00, **50 BETs idênticas de 50.00 concorrentes via gateway** → exatamente 1
+processada + 49 replays idempotentes (`idempotentReplay:true` com o resultado
+armazenado), par concorrente de BETs distintas de 40.00 → 200/422
+(`INSUFFICIENT_FUNDS`), saldo final 10.00, **3 linhas de ledger**,
+reconciliação `consistent:true`.
+
+Execução limpa real: `docker compose down -v` + `up --build` em ~1 minuto,
+todas as réplicas healthy. Distribuição provada nos logs por container:
+21/18/13 requisições completadas em api-1/2/3 — três processos independentes
+com pools próprios. `/metrics` acessível via gateway (200, gauges outbox).
+`down -v` remove volumes e redes.
+
+Verificações: `gofmt`, `go vet ./...`, `go test -race ./...`,
+`go vet -tags=integration ./...` e `go test -race -tags=integration ./...`
+(regras de migrations e publisher) passaram neste incremento; smoke acima. Pendências: kill literal de contêineres nos pontos críticos,
+métricas financeiras restantes (operações/replays/conflitos/duração/DLQ/
+divergência) e revisão final de eliminações/secrets.
 
 ---
 
