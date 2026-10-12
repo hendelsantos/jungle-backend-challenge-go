@@ -62,13 +62,14 @@ Configuração inválida ou porta ocupada impede a inicialização. `/health/liv
 docker compose -f compose.dev.yaml up -d   # postgres :55432, keycloak :58080, LocalStack :4566
 ```
 
-Neste incremento o harness aplica as migrations reais em um banco vazio. Para
-preparar o banco de desenvolvimento (o runner de migrations virá no Compose final):
+Neste incremento o harness aplica as migrations reais em um banco vazio. O runner
+oficial é o comando `migrate`:
 
 ```sh
-TEST_DATABASE_URL='postgres://jungle:jungle-local@localhost:55432/jungle?sslmode=disable' \
-  go test -tags=integration ./internal/adapters/postgres -count=1
 export DATABASE_URL='postgres://jungle:jungle-local@localhost:55432/jungle?sslmode=disable'
+make migrate-up          # aplica todas as migrations pendentes; reexecutar é seguro
+make migrate-version     # mostra a versão registrada (`none` = histórico vazio)
+make migrate-down N=1    # rollback destrutivo da última migration (desenvolvimento)
 export OIDC_ISSUER=http://localhost:58080/realms/jungle
 export OIDC_AUDIENCE=jungle-api
 make run

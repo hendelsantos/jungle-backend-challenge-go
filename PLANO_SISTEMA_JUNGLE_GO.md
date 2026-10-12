@@ -940,14 +940,35 @@ SQS/inbox/consumidor com LocalStack (Fase 5).
 **Pronto quando:** todas as garantias de at-least-once e recuperação passam nos containers reais.
 
 ### Fase 6 — Três instâncias, observabilidade e entrega
+- [x] Runner de migrations operacional (`cmd/migrate` com golang-migrate, Makefile) verificado com PostgreSQL real.
+- [ ] Compose de entrega reproduzível a partir de checkout limpo (app + migrations + IdP + filas + gateway).
 - [ ] Expor três processos reais e confirmar paralelismo por carteira.
 - [ ] Testar interrupções, retries, DLQ, auditoria e reconciliação final.
-- [ ] JSON logging, métricas, liveness/readiness.
+- [ ] JSON logging, métricas financeiras restantes, liveness/readiness.
 - [ ] Documentar `README.md`, `ARCHITECTURE.md`, ADRs e scripts de reprodução.
 - [ ] Executar `gofmt`, `go vet ./...`, `go test ./...`, `go test -race ./...` e integração.
 - [ ] Revisar eliminações, endpoints, `.env.example` e secrets ausentes.
 
 **Pronto quando:** alguém consegue clonar, subir com Compose, obter tokens, fazer operações e reproduzir testes sem intervenção manual oculta.
+
+**Incremento runner de migrations — 12/10/2026 (Fase 6, item 1):** comando
+`cmd/migrate` com `golang-migrate/v4` v4.19.1 e driver `pgx5` (pgx/v5 stdlib já
+presente no módulo): `up [N]`, `down N`, `version` e `force V`, DSN em
+`DATABASE_URL` com conversão de scheme preservando parâmetros de conexão, ping
+rápido com timeout antes de abrir o histórico e `ErrNoChange` tratado como
+"história já alvo". Makefile ganha `migrate-up`, `migrate-down N=` e
+`migrate-version`; Dockerfile constrói `bin/migrate` e copia `migrations/`
+(direção ao Compose de entrega).
+
+Verificações: `gofmt`, `go vet ./cmd/migrate`, testes unitários (conversão de
+scheme e validação de argumentos) e integração real
+(`go test -tags=integration ./cmd/migrate`) que cria e descarta um banco
+temporário por execução: `up` aplica as quatro migrations com `version=4` limpo,
+`up` repetido é no-op, `down 3`/`up 1` alternam versões e rollback total deixa o
+histórico vazio limpo. No banco de desenvolvimento (schema aplicado pelo harness
+sem histórico do golang-migrate), `up` se recusou corretamente a reaplicar e
+`force 4` registrou o estado atual sem tocar dados — `version` mostra 4 e `up`
+seguinte foi no-op. Compose de entrega e três processos pendentes.
 
 ---
 

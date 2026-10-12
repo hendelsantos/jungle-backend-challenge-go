@@ -274,10 +274,44 @@ No futuro consumidor SQS, a UnitOfWork externa da inbox será dona do commit e d
 
 ## Trabalho ainda pendente
 
+- Compose de entrega reproduzível a partir de checkout limpo (app + migrations + IdP + filas + gateway).
 - Kill literal de processos nos pontos críticos (Testes E/F) e reinício com pendências retomadas.
-- Runner de migrations, Compose de entrega reproduzível (aplicação + IdP + PostgreSQL + filas), métricas financeiras restantes e demonstração com três processos independentes.
+- Métricas financeiras restantes e demonstração com três processos independentes.
 
 As seções anteriores registram a evolução por incremento; as garantias atuais do processamento estão descritas acima. A entrega completa continua pendente.
+
+
+## Runner de migrations — Fase 6, incremento 1
+
+`cmd/migrate` é o único dispositivo autorizado a alterar o schema. Usa
+`golang-migrate/v4` com o driver `pgx5` (a biblioteca `pgx/v5` já presente no
+módulo fornece a conexão) e fonte `iofs` sobre `migrations/`.
+
+**Comandos:** `up [N]` aplica pendentes, `down N` reverte N (destrutivo,
+explicito, sem padrão), `version` imprime a versão registrada ou `none`, e
+`force V` registra uma versão sem executar SQL — usado para adotar um banco cujo
+schema foi criado pelo harness de testes. `ErrNoChange` é tratado como
+"história já no alvo", e a versão dirty falha com instrução de inspeção.
+
+**Conexão:** `DATABASE_URL` obrigatório; o prefixo `postgres://`/`postgresql://`
+vira `pgx5://` por substituição de prefixo, preservando todos os parâmetros
+(incluindo `sslmode`) sem re-parsear a URL. Um ping curto com `context` falha
+rápido com o erro real de conexão antes do golang-migrate abrir seu próprio
+pool. O driver faz advisory lock interno, então dois `migrate` concorrentes não
+aplicam a mesma migration duas vezes.
+
+**Operação:** `Makefile` expõe `migrate-up`, `migrate-down N=` e
+`migrate-version`; o Dockerfile constrói `bin/migrate` e copia `migrations/`
+para o mesmo binário servir de job do Compose final. Cada migration é um único
+`Exec` multi-assertion implícito do PostgreSQL; uma interrupção no meio pode
+deixar a versão dirty — recuperação documentada por `force` após inspeção.
+
+**Verificação:** a integração real cria e descarta um banco temporário por
+execução, sem tocar dado de desenvolvimento: ciclo completo
+`up` → versão 4 limpa, `up` repetido no-op, `down`/`up` parciais alternando
+versões e rollback total com histórico vazio; no banco de desenvolvimento,
+`up` recusou reaplicação do schema pré-existente e `force 4` adotou o estado
+sem tocar dados.
 
 
 ## Outbox publisher — Fase 5, incremento 2
