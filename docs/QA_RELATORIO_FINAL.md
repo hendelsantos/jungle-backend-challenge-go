@@ -179,3 +179,26 @@ não entregues são os próprios diferenciais opcionais, declarados ostensivamen
     com lifecycle `OnStart/OnStop`: validação fail-fast antes de servir; workers param antes
     do pool fechar; transações em andamento concluem ou rolam back com prazo; os kills
     literais comprovam que nenhum trabalho fica órfão do processo.
+
+## 9. Ciclos de QA executados
+
+### Ciclo 1 — 13/10/2026 (commit auditado `114118e`)
+Vitórias completas de: gofmt/vet (com e sem `-tags=integration`), `go test -race ./...`
+(14 pacotes), integração `-race -count=1` com PostgreSQL/Keycloak/LocalStack reais,
+`make build`, reprodutibilidade limpa em `/tmp` (compose up + smoke + faults,
+ambiente clonado destruído), Gitleaks (`no leaks found`), cobertura e fuzzing registrados.
+
+### Ciclo 2 — 13/10/2026 (pós-`b1b42ef`)
+- `gofmt -l .` → vazio; `go vet ./...` e `go vet -tags=integration ./...` → limpos.
+- `go test -race ./...` → 14 pacotes `ok`.
+- `go test -race -tags=integration ./... -count=1` → 14 pacotes `ok` (nenhuma falha,
+  nenhum skip silencioso).
+- Compose de entrega recriado do zero (`down -v` + `up --build`) → réplicas healthy;
+  `scripts/smoke.sh` OK; `scripts/fault.sh` (E/F/H, incluindo cruzamento HTTP→SQS)
+  OK; Gitleaks pós-relatório (25 commits) → `no leaks found`.
+- Sondagem pós-bateria: `/metrics` mostra contadores do publisher coerentes com a
+  recuperação dos drills (claimed/retry sem confirmation_failures), `outbox_pending`
+  e `oldest_age` zero, readiness 200.
+
+Estado após o ciclo 2: implementação congelada; nenhum P0/P1 aberto; recomendação GO
+mantida.
