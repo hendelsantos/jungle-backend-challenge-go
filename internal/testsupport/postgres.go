@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -48,21 +49,41 @@ func PostgresPoolOrSkip(t testing.TB) *pgxpool.Pool {
 	return pool
 }
 
-// applyMigrations runs the real schema once per database: another test binary
-// may already have applied it. The harness never resets data; tests rely on
-// unique identities instead.
+// migrationLockKey is the int64 encoding of "jungle": test binaries run in
+// parallel and must not race on schema creation.
+const migrationLockKey = int64(0x6A756E676C65)
+
+// applyMigrations runs the real schema once per database under a PostgreSQL
+// advisory lock, because separate test binaries apply concurrently. The
+// harness never resets data; tests rely on unique identities instead.
 func applyMigrations(pool *pgxpool.Pool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	var applied *string
-	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.wallets')").Scan(&applied); err != nil {
-		return fmt.Errorf("check existing schema: %w", err)
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin migrations: %w", err)
 	}
-	if applied != nil {
-		return nil
+	defer func() { _ = tx.Rollback(ctx) }() // harmless after commit
+
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", migrationLockKey); err != nil {
+		return fmt.Errorf("lock migrations: %w", err)
 	}
 
+	var applied *string
+	if err := tx.QueryRow(ctx, "SELECT to_regclass('public.wallets')").Scan(&applied); err != nil {
+		return fmt.Errorf("check existing schema: %w", err)
+	}
+	if applied == nil {
+		if err := applyMigrationFiles(ctx, tx); err != nil {
+			return err
+		}
+	}
+	// Transaction-level DDL: the whole schema appears atomically.
+	return tx.Commit(ctx)
+}
+
+func applyMigrationFiles(ctx context.Context, tx pgx.Tx) error {
 	// Resolve the repository root from this file's location: the working
 	// directory of a test binary belongs to whichever package is under test.
 	_, thisFile, _, ok := runtime.Caller(0)
@@ -82,7 +103,7 @@ func applyMigrations(pool *pgxpool.Pool) error {
 		if err != nil {
 			return err
 		}
-		if _, err := pool.Exec(ctx, string(script)); err != nil {
+		if _, err := tx.Exec(ctx, string(script)); err != nil {
 			return fmt.Errorf("apply %s: %w", filepath.Base(file), err)
 		}
 	}

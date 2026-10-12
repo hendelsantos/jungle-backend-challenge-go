@@ -4,7 +4,7 @@
 > **Desafio:** Processamento Distribuído de Apostas em Go  
 > **Origem:** <https://github.com/junglegaming/backend-challenge-go>  
 > **Data do planejamento:** 12/10/2026  
-> **Estado:** Fases 0 e 1 concluídas; Fase 2 em progresso: migrations verificadas, `pgx` (pool + `UnitOfWork`) e abertura atômica de carteira (`CreateWallet` com `OPENING`, ledger e outbox no mesmo commit) implementados e testados contra PostgreSQL real. Validações e progresso na seção 13. Runner de migrations, usuários de migração/runtime, reconciliação e Compose pendentes, além das Fases 3–6.
+> **Estado:** Fases 0 e 1 concluídas; Fase 2 quase completa: migrations verificadas e com trigger/CHECK automatizados, `pgx` (pool + `UnitOfWork`), abertura atômica, leitura de carteira, ledger com cursor e reconciliação em snapshot — tudo testado contra PostgreSQL real. Validações e progresso na seção 13. Runner de migrations, usuários de migração/runtime e Compose pendentes; `ProcessWager` e Fases 3–6 a seguir.
 
 ---
 
@@ -716,10 +716,10 @@ incremento inicia a Fase 2 com as migrations de `wallets`, `wager_transactions`,
 
 ### Fase 2 — Persistência transacional e abertura
 - [x] Criar migrations: wallets, transactions, ledger, inbox, outbox.
-- [ ] Definir repositórios e `UnitOfWork` baseada em `pgx.Tx` (parcial: UoW, pool e repositórios de escrita da abertura prontos; leituras e repositórios do ProcessWager pendentes).
+- [ ] Definir repositórios e `UnitOfWork` baseada em `pgx.Tx` (parcial: UoW, pool, escritas da abertura e leituras de carteira/ledger/reconciliação prontos; leitura com `FOR UPDATE` e repositórios do ProcessWager pendentes).
 - [x] Criar abertura positiva/zero de carteira atômica, com `OPENING` quando exigido.
-- [ ] Testar `UNIQUE`, `CHECK`, trigger imutável e rollback de erros.
-- [ ] Criar reconciliação em snapshot e leitura de ledger cursor.
+- [x] Testar `UNIQUE`, `CHECK`, trigger imutável e rollback de erros.
+- [x] Criar reconciliação em snapshot e leitura de ledger cursor.
 
 **Pronto quando:** schema protege invariantes e abertura/reconciliação passam com PostgreSQL real.
 
@@ -793,6 +793,33 @@ transacional e SQL são da suíte de integração), 41,0% em `postgres` unitári
 integração (ramos restantes são mapeamentos de erro SQL). Próximo incremento: leitura de
 carteira/ledger com cursor e reconciliação em snapshot (Fase 2, itens 4–5) ou runner de
 migrations/Compose.
+
+**Incremento leituras, cursor e reconciliação — 12/10/2026:** casos de uso de leitura em
+`internal/application/query`: `GetWallet`, `ListLedger` (valida `limit` 1–100 com padrão 50;
+carteira inexistente distingue 404 de ledger vazio) e `ReconcileWallet`. Portas de leitura
+em `ports/queries.go` (`WalletReader`, `LedgerReader`, `ReconciliationReader` +
+`ReconciliationReport`). Implementações em `internal/adapters/postgres`: leituras se unem à
+transação do contexto quando existe (preparando o `FOR UPDATE` do ProcessWager) ou usam o
+pool; ledger pagina com cursor opaco base64url de `(created_at, id)`, ordenação estável com
+tie-break por uuid, `LIMIT n+1` para detectar próxima página, sem `OFFSET`, e reidrata cada
+linha por `ledger.New` (linha corrompida é erro, nunca silêncio); a moeda vem por JOIN da
+carteira (tabela de ledger não tem coluna de moeda por design). Reconciliação em transação
+`REPEATABLE READ READ ONLY`: saldo e soma do ledger no mesmo snapshot, soma em `NUMERIC`
+convertida com exato `math/big` e checagem de faixa antes de `FromMinorUnits` (overflow é
+`ErrLedgerSumOutOfRange`, auditable); `difference = stored − calculated`; nunca altera o
+saldo. Item 4 da Fase 2 automatizado em Go: trigger append-only rejeita `UPDATE`/`DELETE`/
+`TRUNCATE` com a entrada intacta após as tentativas, e `CHECK` de saldo negativo devolve
+23514. Verificações: `gofmt`, `go vet ./...`, `go vet -tags=integration ./...`,
+`go test ./...` limpos; integração PostgreSQL real com `-count=2` (mesmo banco, provando
+idempotência do harness e unicidade por execução) e `-race` em todos os pacotes internos —
+todos PASS: paginação com tie-break de mesmo timestamp, cursor inválido →
+`ErrInvalidCursor`, carteira ausente → `ErrWalletNotFound`, reconciliação consistente
+(abertura), zerada (0 lançamentos), divergente (stored 500,00 vs calculado 400,00,
+difference 100,00, saldo preservado) e ausente. O harness de migrations ganhou advisory
+lock transacional (`pg_advisory_xact_lock`) porque binários de teste paralelos disputavam
+a criação do schema. Cobertura unitária de `query`: 100,0%. Próximo incremento: caso de
+uso `ProcessWager` (BET/WIN/LOSS/REFUND/ROLLBACK com `FOR UPDATE`, idempotência persistente
+e hash canônico).
 
 ### Fase 3 — OIDC, endpoints e operação síncrona
 - [ ] Provisionar Keycloak; validar tokens, issuer/audience e roles.

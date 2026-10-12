@@ -187,6 +187,18 @@ Quatro migrations `up`/`down` em `migrations/` seguem a convenção do golang-mi
 
 
 
+## Leituras, cursor e reconciliação (Fase 2, quarto incremento)
+
+`internal/application/query` agrega os casos de uso de leitura — `GetWallet`, `ListLedger` e `ReconcileWallet` — e `ports/queries.go` define as portas correspondentes (`WalletReader`, `LedgerReader`, `ReconciliationReader`), com `ErrWalletNotFound`, `ErrInvalidCursor` e `ErrLedgerSumOutOfRange` classificáveis para os futuros códigos HTTP.
+
+**Leituras:** os readers se unem à transação do contexto quando existe uma (preparando o `SELECT ... FOR UPDATE` do futuro `ProcessWager`) ou usam o pool direto. Wallets reidratam pelo construtor do domínio — linha corrompida é erro, nunca aceitação silenciosa. Ledger pagina com cursor **opaco base64url** de `(created_at, id)`: ordenação estável com tie-break por uuid quando os timestamps coincidem, comparação por linha no PostgreSQL, `LIMIT n+1` para detectar próxima página e nenhum `OFFSET`. Cada entrada de ledger é reconstruída por `ledger.New`, revalidando a aritmética na leitura. A moeda vem por JOIN com a carteira: a tabela de ledger não tem coluna de moeda por decisão de schema, e o join impede adivinhação.
+
+**Reconciliação:** transação `REPEATABLE READ READ ONLY` — saldo armazenado e soma do ledger saem do **mesmo snapshot**, imune a movimentos concorrentes, e o modo leitura garante que a reconciliação jamais altera o saldo (correções exigem novos lançamentos). A soma usa `SUM` em `NUMERIC` (não transborda) convertida com `math/big` e checagem de faixa antes de `FromMinorUnits`; um total fora do intervalo representável retorna `ErrLedgerSumOutOfRange` — falha auditable em vez de truncamento. `difference` é o saldo armazenado menos o reconstruído, podendo ser negativo (permitido em `Money` para diferenças).
+
+**Proteções automatizadas:** os testes de integração agora exercitam em Go o trigger append-only (`UPDATE`, `DELETE` e `TRUNCATE` rejeitados, entrada intacta depois) e o `CHECK` de saldo negativo (SQLSTATE 23514), fechando o item 4 da Fase 2 que antes dependia só da verificação manual das migrations.
+
+**Harness:** binários de teste diferentes correm em paralelo e disputavam a criação do schema; a aplicação das migrations agora ocorre sob `pg_advisory_xact_lock` com verificação `to_regclass`, dentro de uma transação — o schema aparece atomicamente e apenas uma vez. Os dados nunca são resetados (o trigger proíbe apagar o ledger), então os testes usam identidades únicas por execução; a suíte roda com `-count=2` no mesmo banco para provar isso.
+
 ## Decisões previstas, ainda não implementadas
 
 O plano mestre detalha as escolhas que serão confirmadas com código e testes:

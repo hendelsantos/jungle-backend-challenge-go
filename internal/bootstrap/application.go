@@ -8,6 +8,7 @@ import (
 
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/adapters/postgres"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/application/command"
+	"github.com/hendelsantos/jungle-backend-challenge-go/internal/application/query"
 )
 
 // applicationModule is composed together with the database module: use cases
@@ -19,7 +20,13 @@ func applicationModule() fx.Option {
 			postgres.NewWagerTransactionRepository,
 			postgres.NewLedgerRepository,
 			postgres.NewOutboxRepository,
+			postgres.NewWalletReader,
+			postgres.NewLedgerReader,
+			postgres.NewReconciler,
 			newCreateWalletDeps,
+			newGetWalletDeps,
+			newListLedgerDeps,
+			newReconcileWalletDeps,
 		),
 	)
 }
@@ -51,4 +58,16 @@ func newUUID() uuid.UUID {
 		return uuid.New()
 	}
 	return id
+}
+
+func newGetWalletDeps(wallets *postgres.WalletReader) query.GetWalletDeps {
+	return query.GetWalletDeps{Wallets: wallets}
+}
+
+func newListLedgerDeps(wallets *postgres.WalletReader, ledger *postgres.LedgerReader) query.ListLedgerDeps {
+	return query.ListLedgerDeps{Wallets: wallets, Ledger: ledger}
+}
+
+func newReconcileWalletDeps(reconciler *postgres.Reconciler) query.ReconcileWalletDeps {
+	return query.ReconcileWalletDeps{Reconciliation: reconciler}
 }

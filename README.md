@@ -2,7 +2,7 @@
 
 Solução em desenvolvimento para o [desafio de processamento distribuído de apostas](https://github.com/junglegaming/backend-challenge-go).
 
-**Estado: Fases 0 e 1 concluídas; Fase 2 em progresso.** Existe um servidor HTTP com Uber Fx, configuração validada, logs JSON, liveness e shutdown, o domínio financeiro completo com testes (`Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry`, eventos tipados), migrations versionadas verificadas em PostgreSQL real e o caso de uso `CreateWallet`: abertura atômica com `OPENING`, lançamento de ledger e eventos de outbox no mesmo commit, testada contra banco real. Ainda não há endpoints de negócio, autenticação, SQS, readiness, runner de migrations integrado ou reconciliação. O acompanhamento está em [PLANO_SISTEMA_JUNGLE_GO.md](PLANO_SISTEMA_JUNGLE_GO.md).
+**Estado: Fases 0 e 1 concluídas; Fase 2 quase completa.** Existe um servidor HTTP com Uber Fx, configuração validada, logs JSON, liveness e shutdown; o domínio financeiro completo com testes; migrations versionadas com trigger append-only e constraints verificados automaticamente; `pgx` com pool e `UnitOfWork` transacional; e os casos de uso `CreateWallet` (abertura atômica com `OPENING`, ledger e outbox no mesmo commit), `GetWallet`, `ListLedger` (cursor opaco, ordenação estável) e `ReconcileWallet` (snapshot `REPEATABLE READ READ ONLY`) — todos testados contra PostgreSQL real. Ainda não há endpoints de negócio, autenticação, SQS, readiness, runner de migrations integrado ou `ProcessWager`. O acompanhamento está em [PLANO_SISTEMA_JUNGLE_GO.md](PLANO_SISTEMA_JUNGLE_GO.md).
 
 ## Executar localmente
 
@@ -52,12 +52,12 @@ make build        # bin/server
 
 Os testes atuais verificam configuração, contrato de liveness, composição Fx, porta ocupada, liberação do listener, conclusão de requisições durante shutdown, gate do módulo de banco, invariantes de `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e eventos de domínio. Não são testes de integração financeira nem substituem os cenários obrigatórios com infraestrutura real.
 
-Os testes transacionais do `UnitOfWork` e do caso de uso `CreateWallet` exigem PostgreSQL real (migrations aplicadas pelo próprio harness) e usam a build tag `integration` (pulam sem a variável de conexão; nenhum mock substitui o banco):
+Os testes de integração (transações do `UnitOfWork`, caso de uso `CreateWallet`, leituras com cursor, reconciliação e proteções de schema) exigem PostgreSQL real (migrations aplicadas pelo próprio harness) e usam a build tag `integration` (pulam sem a variável de conexão; nenhum mock substitui o banco):
 
 ```sh
 docker run -d --name jungle-pg -e POSTGRES_PASSWORD=verify -p 127.0.0.1:55432:5432 postgres:17-alpine
 TEST_DATABASE_URL='postgres://postgres:verify@127.0.0.1:55432/postgres?sslmode=disable' \
-  go test -tags=integration ./internal/adapters/postgres/... ./internal/application/command/...
+  go test -tags=integration ./internal/...
 docker rm -f jungle-pg
 ```
 
@@ -103,10 +103,10 @@ A imagem usa build multi-stage e executa com usuário sem privilégios. O Compos
 
 ```text
 cmd/server/                        entrada do processo
-internal/application/             portas e casos de uso (UnitOfWork, CreateWallet)
+internal/application/             portas e casos de uso (command e query)
 internal/bootstrap/               configuração, composição Fx e lifecycle
 internal/adapters/http/           servidor e contrato HTTP
-internal/adapters/postgres/       pool pgx, UnitOfWork e repositórios
+internal/adapters/postgres/       pool pgx, UnitOfWork, repositórios e reconciliador
 internal/domain/money/            valor monetário exato e testes
 internal/domain/wallet/           agregado de carteira e testes
 internal/domain/wagering/         transações, estados e políticas
@@ -119,7 +119,7 @@ docs/reference/                   snapshot do enunciado e procedência
 references/                       clone local do desafio (ignorado pelo Git)
 ```
 
-As decisões e limites estão em [ARCHITECTURE.md](ARCHITECTURE.md). O próximo incremento são as leituras (carteira, ledger com cursor e reconciliação em snapshot) e/ou o runner de migrations; os endpoints HTTP autenticados vêm na Fase 3. As demais pastas serão criadas quando tiverem implementação.
+As decisões e limites estão em [ARCHITECTURE.md](ARCHITECTURE.md). O próximo incremento é o caso de uso `ProcessWager` (BET/WIN/LOSS/REFUND/ROLLBACK com lock por carteira, idempotência persistente e hash canônico); os endpoints HTTP autenticados vêm na Fase 3. As demais pastas serão criadas quando tiverem implementação.
 
 O módulo e o remoto `origin` usam o repositório [hendelsantos/jungle-backend-challenge-go](https://github.com/hendelsantos/jungle-backend-challenge-go).
 
