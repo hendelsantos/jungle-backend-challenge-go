@@ -2,41 +2,56 @@ package httpapi
 
 import (
 	"context"
-	"fmt"
 	"net/http"
+	"sync"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/application/ports"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/observability"
 )
 
-// RegisterOutboxMetrics exposes Prometheus text with no financial data or
-// high-cardinality labels. A failed DB query yields 503, never a false zero lag.
-func RegisterOutboxMetrics(mux *http.ServeMux, store ports.OutboxDeliveryRepository, m *observability.OutboxMetrics) {
-	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-		defer cancel()
-		stats, err := store.Stats(ctx)
-		if err != nil {
-			http.Error(w, "outbox metrics unavailable", http.StatusServiceUnavailable)
-			return
-		}
-		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-store")
-		for _, metric := range []struct {
-			name, kind string
-			value      uint64
-		}{
-			{"jungle_outbox_pending", "gauge", uint64(stats.Pending)},
-			{"jungle_outbox_oldest_age_seconds", "gauge", uint64(stats.OldestAgeSeconds)},
-			{"jungle_outbox_claimed_total", "counter", m.Claimed.Load()},
-			{"jungle_outbox_published_total", "counter", m.Published.Load()},
-			{"jungle_outbox_publish_failures_total", "counter", m.PublishFailures.Load()},
-			{"jungle_outbox_confirmation_failures_total", "counter", m.ConfirmationFailures.Load()},
-			{"jungle_outbox_retries_total", "counter", m.Retries.Load()},
-			{"jungle_outbox_lease_lost_total", "counter", m.LeaseLost.Load()},
-		} {
-			fmt.Fprintf(w, "# TYPE %s %s\n%s %d\n", metric.name, metric.kind, metric.name, metric.value)
-		}
+// outboxStatsCollector exposes the publisher backlog as Prometheus gauges.
+// The values are computed from PostgreSQL for every scrape, so a failed query
+// becomes an invalid metric on the output instead of a stale zero.
+type outboxStatsCollector struct {
+	store     ports.OutboxDeliveryRepository
+	pending   *prometheus.Desc
+	oldestAge *prometheus.Desc
+}
+
+var outboxGaugesOnce sync.Once
+
+// RegisterMetrics exposes the shared Prometheus registry at GET /metrics.
+// No financial data or high-cardinality labels appear on the output.
+func RegisterMetrics(mux *http.ServeMux, store ports.OutboxDeliveryRepository) {
+	outboxGaugesOnce.Do(func() {
+		observability.Prometheus.MustRegister(outboxStatsCollector{
+			store: store,
+			pending: prometheus.NewDesc("jungle_outbox_pending",
+				"Committed outbox events not yet published.", nil, nil),
+			oldestAge: prometheus.NewDesc("jungle_outbox_oldest_age_seconds",
+				"Age of the oldest unpublished outbox event.", nil, nil),
+		})
 	})
+	mux.Handle("GET /metrics", promhttp.HandlerFor(observability.Prometheus, promhttp.HandlerOpts{}))
+}
+
+func (c outboxStatsCollector) Describe(ch chan<- *prometheus.Desc) {
+	prometheus.DescribeByCollect(c, ch)
+}
+
+func (c outboxStatsCollector) Collect(ch chan<- prometheus.Metric) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	stats, err := c.store.Stats(ctx)
+	if err != nil {
+		ch <- prometheus.NewInvalidMetric(c.pending, err)
+		ch <- prometheus.NewInvalidMetric(c.oldestAge, err)
+		return
+	}
+	ch <- prometheus.MustNewConstMetric(c.pending, prometheus.GaugeValue, float64(stats.Pending))
+	ch <- prometheus.MustNewConstMetric(c.oldestAge, prometheus.GaugeValue, float64(stats.OldestAgeSeconds))
 }

@@ -275,7 +275,40 @@ No futuro consumidor SQS, a UnitOfWork externa da inbox será dona do commit e d
 ## Trabalho ainda pendente
 
 - Kill literal de containers nos pontos críticos (Testes E/F) e reinício com pendências retomadas.
-- Suíte de integração/falhas e mensagem SQS apontadas ao ambiente de entrega; métricas financeiras restantes.
+- Suíte de integração/falhas e mensagem SQS apontadas ao ambiente de entrega.
+
+As seções anteriores registram a evolução por incremento; as garantias atuais do processamento estão descritas acima. A entrega completa continua pendente.
+
+
+## Métricas financeiras — Fase 6, incremento 3
+
+`/metrics` serve um registro Prometheus dedicado (`observability.Prometheus`,
+deliberadamente sem métricas de runtime Go). Conjuntos são singletons por processo:
+`sync.Once` impede o duplo registro de construtor repetido (bootstrap, testes).
+
+**Financeiros:** `jungle_wager_operations_total{kind,status}` conta cada resposta
+do caso de uso concluída no handler HTTP — um replay idempotente também é uma
+resposta com status persistido, contada como operação e adicionalmente em
+`jungle_wager_idempotent_replays_total`; conflitos de identidade viram
+`jungle_wager_idempotency_conflicts_total` (409). A duração por kind vai no
+histograma `jungle_wager_processing_duration_seconds{kind}`. Retries de
+transação do `ProcessWager` alimentam `jungle_wager_db_retries_total{reason}`
+(o rótulo é limitado: `retryable_transaction`; classificação por SQLSTATE
+específica fica posterior). No consumidor SQS,
+`jungle_wager_sqs_redeliveries_total` conta mensagens com
+`ApproximateReceiveCount > 1` e `jungle_wager_dlq_total` cada cópia à DLQ. Na
+reconciliação interna, `jungle_wallet_reconciliations_total` conta execuções e
+`jungle_wallet_reconciliation_divergences_total` marca divergências (o saldo
+nunca é corrigido; o log JSON já existente persiste a diferença).
+
+**Outbox:** contadores por processo (`claim/publish/failures/retries/lease`) e
+os gauges `jungle_outbox_pending`/`jungle_outbox_oldest_age_seconds` como um
+`Collector` que consulta o PostgreSQL a cada scrape — falha de consulta aparece
+como métrica inválida na saída, nunca como zero velho.
+
+**Rótulos:** apenas kind, status e reason, todos enumerados e limitados para
+não permitir cardinalidade explosiva — identidade de jogador/carteira/provedor
+nunca vira rótulo; o correlationId permanece só nos logs JSON.
 
 As seções anteriores registram a evolução por incremento; as garantias atuais do processamento estão descritas acima. A entrega completa continua pendente.
 

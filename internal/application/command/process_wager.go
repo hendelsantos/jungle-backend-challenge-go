@@ -17,6 +17,7 @@ import (
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/domain/money"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/domain/wagering"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/domain/wallet"
+	"github.com/hendelsantos/jungle-backend-challenge-go/internal/observability"
 )
 
 var (
@@ -63,6 +64,8 @@ type ProcessWagerDeps struct {
 	Outbox       ports.OutboxRepository
 	Now          func() time.Time
 	NewID        func() uuid.UUID
+	// Financials is optional observability for retry accounting.
+	Financials *observability.FinancialMetrics
 	// Backoff spaces retry attempts; tests inject a zero duration.
 	Backoff func(attempt int) time.Duration
 }
@@ -98,6 +101,9 @@ func (d ProcessWagerDeps) ProcessWager(ctx context.Context, input ProcessWagerIn
 		}
 		if !errors.Is(err, ports.ErrRetryableTransaction) || attempt >= maxTransactionAttempts {
 			return ProcessWagerResult{}, err
+		}
+		if d.Financials != nil {
+			d.Financials.DbRetries.WithLabelValues("retryable_transaction").Inc()
 		}
 		if err := sleepCtx(ctx, backoff(attempt)); err != nil {
 			return ProcessWagerResult{}, err

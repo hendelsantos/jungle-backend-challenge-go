@@ -944,7 +944,7 @@ SQS/inbox/consumidor com LocalStack (Fase 5).
 - [x] Compose de entrega reproduzível a partir de checkout limpo (app + migrations + IdP + filas + gateway), verificado com `down -v` + `up --build` + smoke.
 - [x] Expor três processos reais e confirmar paralelismo por carteira (réplicas do Compose atrás do gateway; Teste A/B executados entre processos).
 - [ ] Testar interrupções, retries, DLQ, auditoria e reconciliação final (kill literal do Consumidor/publisher nos containers).
-- [ ] JSON logging (done; verificação final), métricas financeiras restantes, liveness/readiness (done).
+- [x] JSON logging (`slog`) e métricas financeiras requisitadas (`jungle_wager_*`, `jungle_wallet_*`, histograma de duração) expostas em `/metrics` e verificadas no Compose de entrega; liveness/readiness mantidos.
 - [ ] Documentar `README.md`, `ARCHITECTURE.md`, ADRs e scripts de reprodução (README/ARCHITECTURE atualizados a cada incremento; revisão final pendente).
 - [ ] Executar `gofmt`, `go vet ./...`, `go test ./...`, `go test -race ./...` e integração (executados neste incremento; repetir na entrega).
 - [ ] Revisar eliminações, endpoints, `.env.example` e secrets ausentes.
@@ -998,6 +998,31 @@ todas as réplicas healthy. Distribuição provada nos logs por container:
 21/18/13 requisições completadas em api-1/2/3 — três processos independentes
 com pools próprios. `/metrics` acessível via gateway (200, gauges outbox).
 `down -v` remove volumes e redes.
+
+### Fase 6, incremento 3 — métricas financeiras (12/10/2026)
+
+Observabilidade migrada para `client_golang/prometheus`: registro dedicado
+(`observability.Prometheus`, sem métricas de runtime Go) servido em
+`GET /metrics`; gauges de outbox viraram um `Collector` que consulta o
+PostgreSQL a cada scrape — consulta falha vira métrica inválida na saída, não
+zero velho. Conjuntos são singletons por processo (`sync.Once`), evitando
+duplo registro; deltas, não valores absolutos, nas asserções de teste.
+
+Métricas requisitadas e conectadas: `jungle_wager_operations_total{kind,status}`
+(fechadas no handler HTTP, replay conta como resposta com status persistido),
+`jungle_wager_idempotent_replays_total`, `jungle_wager_idempotency_conflicts_total` (409),
+`jungle_wager_processing_duration_seconds{kind}` (histograma), `jungle_wager_db_retries_total{reason}` (retry de transação no ProcessWager),
+`jungle_wager_sqs_redeliveries_total` (`ApproximateReceiveCount` > 1),
+`jungle_wager_dlq_total` (cópia à DLQ) e `jungle_wallet_reconciliations_total`
+/ `jungle_wallet_reconciliation_divergences_total`. Sem labels de alta
+cardinalidade (kind/status/reason limitados).
+
+Verificações: `gofmt`, `go vet ./...`, `go test -race ./...`,
+`go vet -tags=integration ./...` e integração `-race` passaram (fixture do
+publisher ajustado para `testutil.ToFloat64` e deltas). No Compose de entrega
+reconstruído: BET processada + replay, `operations_total{BET,PROCESSED}=2`,
+`replays=1`, histograma com 2 observações, gauges outbox em 0 — evidência em
+produção local.
 
 Verificações: `gofmt`, `go vet ./...`, `go test -race ./...`,
 `go vet -tags=integration ./...` e `go test -race -tags=integration ./...`

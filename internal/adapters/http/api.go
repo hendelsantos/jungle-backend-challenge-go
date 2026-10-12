@@ -13,10 +13,12 @@ import (
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/application/ports"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/application/query"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/domain/wagering"
+	"github.com/hendelsantos/jungle-backend-challenge-go/internal/observability"
 )
 
 type API struct {
 	Auth      ports.Authenticator
+	Fin       *observability.FinancialMetrics
 	Create    command.CreateWalletDeps
 	Process   command.ProcessWagerDeps
 	Wallet    query.GetWalletDeps

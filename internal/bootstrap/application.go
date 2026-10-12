@@ -9,6 +9,7 @@ import (
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/adapters/postgres"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/application/command"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/application/query"
+	"github.com/hendelsantos/jungle-backend-challenge-go/internal/observability"
 )
 
 // applicationModule is composed together with the database module: use cases
@@ -82,9 +83,11 @@ func newProcessWagerDeps(
 	lookups *postgres.WagerTransactionReader,
 	ledgerRepository *postgres.LedgerRepository,
 	outbox *postgres.OutboxRepository,
+	finance *observability.FinancialMetrics,
 ) command.ProcessWagerDeps {
 	return command.ProcessWagerDeps{
 		UnitOfWork: uow, Wallets: wallets, Wagers: wagers, WagerLookups: lookups,
-		Ledger: ledgerRepository, Outbox: outbox, Now: time.Now, NewID: newUUID,
+		Ledger: ledgerRepository, Outbox: outbox, Financials: finance,
+		Now: time.Now, NewID: newUUID,
 	}
 }

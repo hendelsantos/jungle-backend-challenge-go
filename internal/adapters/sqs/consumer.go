@@ -15,6 +15,7 @@ import (
 	"github.com/aws/smithy-go"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/application/command"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/application/ports"
+	"github.com/hendelsantos/jungle-backend-challenge-go/internal/observability"
 )
 
 // ConsumeWagerMessages is the single entry point the consumer loop needs;
@@ -34,6 +35,8 @@ type Consumer struct {
 	ConsumerName  string
 	Logger        *slog.Logger
 	ProviderKeys  ProviderKeys
+	// Metrics is optional; when present it counts redeliveries and DLQ copies.
+	Metrics *observability.FinancialMetrics
 	// PollWait is the long-poll wait in seconds (default 10).
 	PollWait int
 }
@@ -103,6 +106,11 @@ func (c *Consumer) handle(parent context.Context, message types.Message) {
 	if message.Body != nil {
 		body = []byte(*message.Body)
 	}
+	if c.Metrics != nil {
+		if receives, err := strconv.Atoi(message.Attributes[string(types.MessageSystemAttributeNameApproximateReceiveCount)]); err == nil && receives > 1 {
+			c.Metrics.Redeliveries.Inc()
+		}
+	}
 	input, err := ParseEnvelope(body, c.ConsumerName)
 	if err != nil {
 		// Permanently invalid envelope: no domain evaluation happened.
@@ -150,6 +158,9 @@ func (c *Consumer) handle(parent context.Context, message types.Message) {
 // queue. The DLQ copy keeps the original body for inspection; the group id
 // preserves FIFO ordering semantics on the DLQ.
 func (c *Consumer) deadLetter(ctx context.Context, message types.Message, body []byte, cause error) {
+	if c.Metrics != nil {
+		c.Metrics.Dlq.Inc()
+	}
 	messageID := "unknown"
 	if message.MessageId != nil {
 		messageID = *message.MessageId

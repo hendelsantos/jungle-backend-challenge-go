@@ -35,12 +35,12 @@ func (d PublishOutboxDeps) PublishNext(parent context.Context) (bool, error) {
 	if err != nil || !found {
 		return false, err
 	}
-	d.Metrics.Claimed.Add(1)
+	d.Metrics.Claimed.Inc()
 	if event.Attempts > 1 {
-		d.Metrics.Retries.Add(1)
+		d.Metrics.Retries.Inc()
 	}
 	if err := d.Publisher.Publish(ctx, event); err != nil {
-		d.Metrics.PublishFailures.Add(1)
+		d.Metrics.PublishFailures.Inc()
 		delay, code := outboxBackoff(event.Attempts), "PUBLISH_FAILED"
 		if parent.Err() != nil {
 			delay, code = 0, "CANCELLED"
@@ -50,23 +50,23 @@ func (d PublishOutboxDeps) PublishNext(parent context.Context) (bool, error) {
 		defer stop()
 		retryErr := d.Outbox.ScheduleRetry(cleanup, event.EventID, event.LeaseToken, delay, code)
 		if errors.Is(retryErr, ports.ErrOutboxLeaseLost) {
-			d.Metrics.LeaseLost.Add(1)
+			d.Metrics.LeaseLost.Inc()
 		}
 		if retryErr != nil {
-			d.Metrics.ConfirmationFailures.Add(1)
+			d.Metrics.ConfirmationFailures.Inc()
 		}
 		d.log("outbox publish failed", event, code)
 		return true, errors.Join(fmt.Errorf("publish outbox: %w", err), retryErr)
 	}
 	if err := d.Outbox.MarkPublished(ctx, event.EventID, event.LeaseToken); err != nil {
-		d.Metrics.ConfirmationFailures.Add(1)
+		d.Metrics.ConfirmationFailures.Inc()
 		if errors.Is(err, ports.ErrOutboxLeaseLost) {
-			d.Metrics.LeaseLost.Add(1)
+			d.Metrics.LeaseLost.Inc()
 		}
 		d.log("outbox confirmation failed; lease will recover", event, "CONFIRMATION_FAILED")
 		return true, fmt.Errorf("confirm outbox: %w", err)
 	}
-	d.Metrics.Published.Add(1)
+	d.Metrics.Published.Inc()
 	d.log("outbox event published", event, "")
 	return true, nil
 }

@@ -111,8 +111,14 @@ func (a API) reconcileWallet(w http.ResponseWriter, r *http.Request, id requestI
 		a.fail(w, err, id)
 		return
 	}
-	if !result.Consistent && a.Logger != nil {
-		a.Logger.Warn("wallet reconciliation mismatch", "walletId", walletID, "correlationId", id.CorrelationID)
+	if a.Fin != nil {
+		a.Fin.Reconciliations.Inc()
+		if !result.Consistent {
+			a.Fin.Divergences.Inc()
+			if a.Logger != nil {
+				a.Logger.Warn("wallet reconciliation mismatch", "walletId", walletID, "correlationId", id.CorrelationID)
+			}
+		}
 	}
 	writeJSON(w, 200, struct {
 		WalletID          uuid.UUID   `json:"walletId"`

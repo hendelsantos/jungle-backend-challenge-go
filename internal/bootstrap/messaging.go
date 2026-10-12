@@ -10,6 +10,7 @@ import (
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/adapters/postgres"
 	sqsadapter "github.com/hendelsantos/jungle-backend-challenge-go/internal/adapters/sqs"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/application/command"
+	"github.com/hendelsantos/jungle-backend-challenge-go/internal/observability"
 )
 
 // messagingModule is composed when SQS_ENDPOINT_URL and DATABASE_URL are set.
@@ -43,13 +44,14 @@ func newConsumeWagerDeps(
 	}
 }
 
-func newSQSConsumer(cfg Config, managed *sqsadapter.ManagedClient, consume command.ConsumeWagerDeps, logger *slog.Logger) *sqsadapter.Consumer {
+func newSQSConsumer(cfg Config, managed *sqsadapter.ManagedClient, consume command.ConsumeWagerDeps, finance *observability.FinancialMetrics, logger *slog.Logger) *sqsadapter.Consumer {
 	return &sqsadapter.Consumer{
 		Consume:       consume.ConsumeWagerMessage,
 		Client:        managed.Client,
 		WagerQueueURL: managed.Queues.WagerQueueURL,
 		DLQQueueURL:   managed.Queues.DLQQueueURL,
 		ConsumerName:  "wager-consumer",
+		Metrics:       finance,
 		Logger:        logger,
 		ProviderKeys:  cfg.SQSProviderKeys,
 	}

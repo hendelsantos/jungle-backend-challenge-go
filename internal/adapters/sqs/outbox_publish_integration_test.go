@@ -26,6 +26,7 @@ import (
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/application/command"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/observability"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/testsupport"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 type outboxFixture struct {
@@ -65,7 +66,7 @@ func newOutboxFixture(t *testing.T) *outboxFixture {
 	// The publisher drains the whole committed outbox of its schema, so the
 	// tests run on their own schema to stay isolated from other suites.
 	pool := testsupport.IsolatedPostgresPool(t)
-	metrics := &observability.OutboxMetrics{}
+	metrics := observability.NewOutboxMetrics()
 	deps := command.PublishOutboxDeps{
 		Outbox:    postgres.NewOutboxDeliveryRepository(pool),
 		Publisher: &sqsadapter.EventPublisher{Client: client, QueueURL: queues.EventsQueueURL},
@@ -142,6 +143,8 @@ func TestOutboxPublisherDeliversCommittedEventIntegration(t *testing.T) {
 		t.Fatalf("read committed payload: %v", err)
 	}
 
+	claimedBase := testutil.ToFloat64(f.metrics.Claimed)
+	publishedBase := testutil.ToFloat64(f.metrics.Published)
 	found, err := f.deps.PublishNext(context.Background())
 	if err != nil || !found {
 		t.Fatalf("publish: found=%v err=%v", found, err)
@@ -168,8 +171,8 @@ func TestOutboxPublisherDeliversCommittedEventIntegration(t *testing.T) {
 	if stats.Pending != 0 || stats.OldestAgeSeconds != 0 {
 		t.Fatalf("stats after publish: %+v", stats)
 	}
-	if f.metrics.Published.Load() != 1 || f.metrics.Claimed.Load() != 1 {
-		t.Fatalf("metrics claimed=%d published=%d", f.metrics.Claimed.Load(), f.metrics.Published.Load())
+	if got := testutil.ToFloat64(f.metrics.Published) - publishedBase; got != 1 || testutil.ToFloat64(f.metrics.Claimed)-claimedBase != 1 {
+		t.Fatalf("metrics deltas claimed=%v published=%v", testutil.ToFloat64(f.metrics.Claimed)-claimedBase, got)
 	}
 
 	if found, _ := f.deps.PublishNext(context.Background()); found {
@@ -195,6 +198,8 @@ func TestOutboxPublisherRepublishesSameEventIdAfterCrashIntegration(t *testing.T
 	}
 
 	time.Sleep(80 * time.Millisecond)
+	claimedBase := testutil.ToFloat64(f.metrics.Claimed)
+	publishedBase := testutil.ToFloat64(f.metrics.Published)
 	found, err = f.deps.PublishNext(context.Background())
 	if err != nil || !found {
 		t.Fatalf("recovery publish: found=%v err=%v", found, err)
@@ -226,8 +231,8 @@ func TestOutboxPublisherRepublishesSameEventIdAfterCrashIntegration(t *testing.T
 	if attempts != 2 {
 		t.Fatalf("attempts after recovery: %d", attempts)
 	}
-	if f.metrics.Published.Load() != 1 || f.metrics.Claimed.Load() != 1 {
-		t.Fatalf("metrics claimed=%d published=%d", f.metrics.Claimed.Load(), f.metrics.Published.Load())
+	if got := testutil.ToFloat64(f.metrics.Published) - publishedBase; got != 1 || testutil.ToFloat64(f.metrics.Claimed)-claimedBase != 1 {
+		t.Fatalf("metrics deltas claimed=%v published=%v", testutil.ToFloat64(f.metrics.Claimed)-claimedBase, got)
 	}
 }
 
