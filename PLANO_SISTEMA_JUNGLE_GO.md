@@ -4,7 +4,7 @@
 > **Desafio:** Processamento Distribuído de Apostas em Go  
 > **Origem:** <https://github.com/junglegaming/backend-challenge-go>  
 > **Data do planejamento:** 12/10/2026  
-> **Estado:** Fase 0 concluída; Fase 1 com `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e eventos tipados. Validações e progresso registrados na seção 13. Revisão final da Fase 1 e Fases 2–6 pendentes.
+> **Estado:** Fases 0 e 1 concluídas (`Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry`, eventos tipados e revisão de invariantes). Validações e progresso registrados na seção 13. Fases 2–6 pendentes; próximo incremento: migrations PostgreSQL.
 
 ---
 
@@ -658,7 +658,7 @@ O próximo incremento é `Money`, conforme seção 16.3. Não há endpoints de n
 - [x] Criar `Wallet` e testes de débito/crédito/versão.
 - [x] Criar transação, estados e políticas para seis kinds.
 - [x] Criar ledger entry e eventos tipados sem dependência de infraestrutura.
-- [ ] Revisar invariantes e rodar `go test -race ./...`.
+- [x] Revisar invariantes e rodar `go test -race ./...`.
 
 **Pronto quando:** todas as regras de negócio têm testes unitários e não usam SQL nem framework.
 
@@ -700,6 +700,21 @@ e 95,0% em `events` (restantes: marcadores de interface e ramos de defesa intern
 `Validate` já cobertos em parte via literais no teste do pacote). Unicidade
 `(wallet_id, transaction_id)`, trigger append-only, tabela `outbox_events` e persistência
 continuam pendentes da Fase 2. Próximo incremento: revisão final de invariantes da Fase 1.
+
+**Revisão final da Fase 1 — 12/10/2026:** revisão de invariantes e verificação completa do
+domínio. `gofmt`, `go vet ./...`, `go test ./...`, `go test -race ./...` e `make build`
+passaram. Cobertura de instruções por pacote: `money` 100,0%, `ledger` 100,0%, `wallet`
+98,3%, `wagering` 97,1%, `events` 95,0% (restantes em `events`: marcadores de interface
+no-op e ramos de defesa interna do `Validate`). Evidências dos critérios eliminatórios:
+nenhum `float32`/`float64` em qualquer arquivo Go do módulo; nenhum import de `fx`, `pgx`,
+`net/http`, SDK AWS, Keycloak ou `database/sql` em `internal/domain`; `panic` ausente do
+código de produção do domínio (apenas em helpers de teste); nenhum TODO/FIXME pendente.
+Fuzzing executado por 10s em cada alvo sem falhas: aritmética de `money` 544.741 execuções,
+parsing de `money` 358.871, sequência de movimentos de `wallet` 273.871 e
+BET→REFUND→ROLLBACK de `wagering` 297.859; nenhum corpus novo gerado. Esses números não
+são benchmarks nem prova de correção completa. A Fase 1 está concluída; o próximo
+incremento inicia a Fase 2 com as migrations de `wallets`, `wager_transactions`,
+`wallet_ledger_entries`, `inbox_messages` e `outbox_events`.
 
 ### Fase 2 — Persistência transacional e abertura
 - [ ] Criar migrations: wallets, transactions, ledger, inbox, outbox.

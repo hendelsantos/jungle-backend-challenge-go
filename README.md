@@ -2,7 +2,7 @@
 
 Solução em desenvolvimento para o [desafio de processamento distribuído de apostas](https://github.com/junglegaming/backend-challenge-go).
 
-**Estado: Fase 0 concluída; Fase 1 com `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e eventos tipados.** Existe um servidor HTTP com Uber Fx, configuração validada, logs JSON, liveness e shutdown, além do domínio monetário, da carteira, das políticas de aposta, do lançamento de ledger e dos eventos de domínio com testes. Ainda não há endpoints de negócio, persistência financeira (tabelas, unicidade e trigger append-only), autenticação, PostgreSQL, SQS ou readiness. O acompanhamento está em [PLANO_SISTEMA_JUNGLE_GO.md](PLANO_SISTEMA_JUNGLE_GO.md).
+**Estado: Fases 0 e 1 concluídas.** Existe um servidor HTTP com Uber Fx, configuração validada, logs JSON, liveness e shutdown, além do domínio financeiro completo com testes: `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e eventos tipados. Ainda não há endpoints de negócio, persistência financeira (migrations, tabelas, unicidade e trigger append-only), autenticação, PostgreSQL, SQS ou readiness. O acompanhamento está em [PLANO_SISTEMA_JUNGLE_GO.md](PLANO_SISTEMA_JUNGLE_GO.md).
 
 ## Executar localmente
 
@@ -105,7 +105,7 @@ docs/reference/            snapshot do enunciado e procedência
 references/                clone local do desafio (ignorado pelo Git)
 ```
 
-As decisões e limites estão em [ARCHITECTURE.md](ARCHITECTURE.md). O próximo incremento é a revisão final de invariantes da Fase 1; em seguida começam as migrations PostgreSQL da Fase 2. As demais pastas serão criadas quando tiverem implementação.
+As decisões e limites estão em [ARCHITECTURE.md](ARCHITECTURE.md). A Fase 1 está concluída; o próximo incremento são as migrations PostgreSQL da Fase 2 (`wallets`, `wager_transactions`, `wallet_ledger_entries`, `inbox_messages`, `outbox_events`). As demais pastas serão criadas quando tiverem implementação.
 
 O módulo e o remoto `origin` usam o repositório [hendelsantos/jungle-backend-challenge-go](https://github.com/hendelsantos/jungle-backend-challenge-go).
 

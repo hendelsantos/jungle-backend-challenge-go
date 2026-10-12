@@ -2,7 +2,7 @@
 
 ## Estado e direção
 
-A Fase 0 está concluída e a Fase 1 possui `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e os eventos tipados de domínio. A direção é uma arquitetura hexagonal enxuta: domínio independente, casos de uso compartilhados por HTTP e SQS, adaptadores para entrada e persistência, e composição centralizada. Precisão monetária, invariantes da carteira, políticas de aposta, lançamento de ledger e contrato de eventos estão implementadas em memória; as garantias transacionais e distribuídas ainda estão pendentes.
+As Fases 0 e 1 estão concluídas: `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e os eventos tipados de domínio, com invariantes revisadas e verificadas. A direção é uma arquitetura hexagonal enxuta: domínio independente, casos de uso compartilhados por HTTP e SQS, adaptadores para entrada e persistência, e composição centralizada. Precisão monetária, invariantes da carteira, políticas de aposta, lançamento de ledger e contrato de eventos estão implementadas em memória; as garantias transacionais e distribuídas ainda estão pendentes.
 
 Dependências planejadas:
 
@@ -157,4 +157,4 @@ O plano mestre detalha as escolhas que serão confirmadas com código e testes:
 - Keycloak/OIDC, escopo por provedor e operações internas autorizadas.
 - SQS com inbox, outbox após commit e recuperação de publicação com IDs estáveis.
 
-Esses itens não estão concluídos. Migrations, ambiente Compose, endpoints de negócio, métricas e testes distribuídos serão acrescentados nas fases seguintes. O próximo incremento é a revisão final de invariantes da Fase 1; em seguida as migrations PostgreSQL da Fase 2.
+Esses itens não estão concluídos. Migrations, ambiente Compose, endpoints de negócio, métricas e testes distribuídos serão acrescentados nas fases seguintes. A revisão final de invariantes da Fase 1 foi executada (verificação completa, cobertura por pacote, ausência de ponto flutuante e de dependências de infraestrutura no domínio, fuzzing sem falhas); o próximo incremento são as migrations PostgreSQL da Fase 2.
