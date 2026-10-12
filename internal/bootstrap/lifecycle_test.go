@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	httpapi "github.com/hendelsantos/jungle-backend-go/internal/adapters/http"
+	httpapi "github.com/hendelsantos/jungle-backend-challenge-go/internal/adapters/http"
 	"go.uber.org/fx"
 )
 

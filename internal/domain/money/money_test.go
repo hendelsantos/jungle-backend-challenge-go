@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hendelsantos/jungle-backend-go/internal/domain/money"
+	"github.com/hendelsantos/jungle-backend-challenge-go/internal/domain/money"
 )
 
 func TestParseDecimal(t *testing.T) {

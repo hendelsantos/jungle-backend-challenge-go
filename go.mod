@@ -1,4 +1,4 @@
-module github.com/hendelsantos/jungle-backend-go
+module github.com/hendelsantos/jungle-backend-challenge-go
 
 go 1.27.2
 

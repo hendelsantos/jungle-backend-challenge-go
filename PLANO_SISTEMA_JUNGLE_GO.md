@@ -25,6 +25,7 @@ Este documento transforma o README oficial do desafio em um plano executável. C
 8. Evitar abstrações desnecessárias: código idiomático em Go, domínio independente das bibliotecas de infraestrutura.
 9. Manter `README.md` e `ARCHITECTURE.md` atualizados conforme a implementação evolui.
 10. Se o escopo for reduzido por prazo, registrar a lacuna claramente: **não declarar atendido um requisito eliminatório incompleto**.
+11. Após cada incremento validado, atualizar a documentação, criar commit e enviar para `origin/main` em `hendelsantos/jungle-backend-challenge-go`, conforme autorização do usuário. Preservar o histórico remoto e confirmar o resultado do push.
 
 ---
 

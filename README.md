@@ -90,7 +90,9 @@ references/                clone local do desafio (ignorado pelo Git)
 
 As decisões e limites estão em [ARCHITECTURE.md](ARCHITECTURE.md). O próximo incremento é `internal/domain/wallet`: criação e reidratação separadas, saldo não negativo, débito/crédito e versão. As demais pastas serão criadas quando tiverem implementação.
 
-O módulo usa `github.com/hendelsantos/jungle-backend-go` como identidade da solução; nenhum repositório remoto foi criado ou configurado.
+O módulo e o remoto `origin` usam o repositório [hendelsantos/jungle-backend-challenge-go](https://github.com/hendelsantos/jungle-backend-challenge-go).
+
+Cada incremento segue o fluxo: implementação, verificações pertinentes, atualização da documentação, commit e push para `origin/main`. Essa rotina está registrada em [AGENTS.md](AGENTS.md).
 
 ## Enunciado original
 

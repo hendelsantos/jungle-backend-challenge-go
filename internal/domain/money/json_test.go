@@ -6,7 +6,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/hendelsantos/jungle-backend-go/internal/domain/money"
+	"github.com/hendelsantos/jungle-backend-challenge-go/internal/domain/money"
 )
 
 func TestJSONContract(t *testing.T) {
