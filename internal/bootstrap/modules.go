@@ -24,7 +24,7 @@ func New() *fx.App {
 		fx.StopTimeout(15 * time.Second),
 	}
 	if os.Getenv("DATABASE_URL") != "" {
-		options = append(options, databaseModule())
+		options = append(options, databaseModule(), applicationModule())
 	}
 	return fx.New(options...)
 }

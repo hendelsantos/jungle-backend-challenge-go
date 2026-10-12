@@ -173,6 +173,19 @@ Quatro migrations `up`/`down` em `migrations/` seguem a convenção do golang-mi
 
 **Testes:** unitários cobrem parsing/config e o gate do módulo; os transacionais (commit, rollback por erro, rollback por cancelamento, aninhado une, erro interno derruba o externo) exigem PostgreSQL real, usam build tag `integration` e pulam sem `TEST_DATABASE_URL` — nenhum mock substitui o banco. **Retry de deadlock** (`40P01`/`40001` com limite e jitter) fica para o incremento do `ProcessWager`, onde reexecutar o caso de uso é seguro; o `UnitOfWork` atual nunca reexecuta `fn` por conta própria.
 
+## Abertura atômica de carteira — caso de uso e repositórios (Fase 2, terceiro incremento)
+
+`internal/application/command` nasce com `CreateWallet`, e `internal/application/ports` ganha as quatro portas de escrita: `WalletRepository`, `WagerTransactionRepository`, `LedgerRepository` e `OutboxRepository`. Elas recebem snapshots do domínio (não DTOs) e **exigem transação ativa** — os repositórios recusam escritas fora do `UnitOfWork`, codificando a regra "estado financeiro nunca commita sozinho".
+
+**Casos de uso:** `CreateWallet` valida a entrada na fronteira da aplicação — BRL-only (o domínio aceita BRL/USD; a restrição da aplicação é permitida pelo enunciado), quantia não negativa e IDs não nulos. O saldo positivo grava, em um único commit: carteira versão 1, `OPENING` em `PROCESSED` (o agregado confirma o saldo existente — nunca credita duas vezes), lançamento de crédito 0→saldo e os eventos `WagerTransactionProcessed` + `WalletBalanceChanged` na outbox; o `causationId` de ambos é a transação de abertura. Saldo zero grava apenas a carteira, como o contrato exige. Identidades são UUID v7 com fallback v4 (entropia insuficiente não derruba o caso de uso; o requisito é unicidade) e o relógio é injetado.
+
+**Repositórios:** SQL explícito com colunas nomeadas; a `pgx.Tx` vem do contexto. O mapeamento de erros é pelo par SQLSTATE + nome da constraint: `23505` em `wallets_player_currency_uidx` → `ports.ErrWalletAlreadyExists` (futuro 409). Metadados externos ausentes viram `NULL`; `HasResult` decide o par de colunas de resultado. O payload da outbox é o JSON imutável do envelope; `next_attempt_at` nasce igual a `occurred_at` (elegível imediatamente), `attempts` em zero.
+
+**Harness de integração (`internal/testsupport`, tag `integration`):** cria o pool direto via `pgxpool` (não importa o adaptador, evitando ciclo de importação com os testes do próprio adaptador), aplica as migrations reais uma única vez por banco (`to_regclass('public.wallets')` como guarda — múltiplos binários de teste compartilham o schema sem recriá-lo) e nunca reseta dados: cada teste usa identidades únicas. Sem `TEST_DATABASE_URL` os testes pulam; com ela, nada é mockado.
+
+**Testes:** unitários do caso de uso com fakes de orquestração (ordem das escritas, zero vs positivo, conflito interrompe antes das escritas financeiras, erro tardio propaga, entradas inválidas não tocam portas) — 83,6% de cobertura unitária; os fakes não substituem infraestrutura, só verificam orquestração, e a semântica transacional/SQL é toda da suíte de integração. Integração contra PostgreSQL real: abertura positiva persiste carteira + `OPENING` + ledger + 2 eventos; zero não gera nada financeiro; duplicata retorna `ErrWalletAlreadyExists` sem efeitos; **falha no meio do caso de uso (ledger injetado) faz rollback de tudo**; jogadores independentes recebem carteiras independentes. Cobertura `postgres`: 41,0% unitária / 55,1% com integração (ramos restantes são tradução de erros SQL ainda não exercitados). Nada ainda cobre concorrência entre processos — os cenários oficiais (duas apostas de 80, 50 duplicatas) exigem o `ProcessWager` e três instâncias.
+
+
 
 ## Decisões previstas, ainda não implementadas
 

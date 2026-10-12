@@ -4,7 +4,7 @@
 > **Desafio:** Processamento Distribuído de Apostas em Go  
 > **Origem:** <https://github.com/junglegaming/backend-challenge-go>  
 > **Data do planejamento:** 12/10/2026  
-> **Estado:** Fases 0 e 1 concluídas; Fase 2 em progresso: migrations verificadas em PostgreSQL real e integração `pgx` (pool + `UnitOfWork`) testada contra banco real. Validações e progresso registrados na seção 13. Repositórios, abertura atômica, reconciliação e Compose pendentes, além das Fases 3–6.
+> **Estado:** Fases 0 e 1 concluídas; Fase 2 em progresso: migrations verificadas, `pgx` (pool + `UnitOfWork`) e abertura atômica de carteira (`CreateWallet` com `OPENING`, ledger e outbox no mesmo commit) implementados e testados contra PostgreSQL real. Validações e progresso na seção 13. Runner de migrations, usuários de migração/runtime, reconciliação e Compose pendentes, além das Fases 3–6.
 
 ---
 
@@ -716,8 +716,8 @@ incremento inicia a Fase 2 com as migrations de `wallets`, `wager_transactions`,
 
 ### Fase 2 — Persistência transacional e abertura
 - [x] Criar migrations: wallets, transactions, ledger, inbox, outbox.
-- [ ] Definir repositórios e `UnitOfWork` baseada em `pgx.Tx`.
-- [ ] Criar abertura positiva/zero de carteira atômica, com `OPENING` quando exigido.
+- [ ] Definir repositórios e `UnitOfWork` baseada em `pgx.Tx` (parcial: UoW, pool e repositórios de escrita da abertura prontos; leituras e repositórios do ProcessWager pendentes).
+- [x] Criar abertura positiva/zero de carteira atômica, com `OPENING` quando exigido.
 - [ ] Testar `UNIQUE`, `CHECK`, trigger imutável e rollback de erros.
 - [ ] Criar reconciliação em snapshot e leitura de ledger cursor.
 
@@ -769,6 +769,30 @@ cancelamento de contexto, aninhado une e erro interno derruba o externo — todo
 com `-race`. Retry de deadlock (40P01/40001) fica para o incremento do ProcessWager, onde
 reexecutar o caso de uso é seguro. Repositórios ficam para o incremento da abertura, seguindo
 a regra de não criar interfaces antes dos casos de uso.
+
+**Incremento abertura atômica — 12/10/2026:** primeiro caso de uso (`internal/application/command`)
+com repositórios reais. Portas em `internal/application/ports`: `WalletRepository`,
+`WagerTransactionRepository`, `LedgerRepository` e `OutboxRepository` recebem snapshots do
+domínio e exigem transação ativa; `ErrWalletAlreadyExists` traduz a violação de
+`UNIQUE(player_id, currency)` (SQLSTATE 23505 pelo nome da constraint). `CreateWallet`
+valida entrada (BRL-only da aplicação, quantia não negativa, IDs não nulos), cria a carteira
+na versão 1 e, para saldo positivo, grava `OPENING` processado (o agregado confirma saldo
+existente sem creditar de novo), lançamento de crédito 0→saldo e os eventos
+`WagerTransactionProcessed` + `WalletBalanceChanged` na outbox — tudo em um commit do
+`UnitOfWork`; saldo zero cria apenas a carteira, conforme o contrato. Identidades UUID v7
+com fallback v4; relógio injetado. Harness `internal/testsupport` (tag `integration`) cria
+pool próprio (sem importar o adaptador, evitando ciclo), aplica as migrations reais uma vez
+por banco (`to_regclass` para idempotência entre binários de teste) e nunca reseta dados.
+Verificações: `gofmt`, `go vet ./...`, `go vet -tags=integration ./...`, `go test ./...` e
+`go test -race ./...` limpos; integração com PostgreSQL real passou nos dois pacotes e com
+`-race`: abertura positiva persiste carteira+OPENING+ledger+2 eventos; zero não gera nada
+financeiro; duplicata retorna `ErrWalletAlreadyExists` sem efeitos adicionais; falha no meio
+(ledger injetado) faz rollback de tudo; jogadores independentes recebem carteiras
+independentes. Cobertura unitária: 83,6% em `command` (fakes de orquestração; semântica
+transacional e SQL são da suíte de integração), 41,0% em `postgres` unitário e 55,1% com
+integração (ramos restantes são mapeamentos de erro SQL). Próximo incremento: leitura de
+carteira/ledger com cursor e reconciliação em snapshot (Fase 2, itens 4–5) ou runner de
+migrations/Compose.
 
 ### Fase 3 — OIDC, endpoints e operação síncrona
 - [ ] Provisionar Keycloak; validar tokens, issuer/audience e roles.

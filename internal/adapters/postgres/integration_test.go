@@ -11,26 +11,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/hendelsantos/jungle-backend-challenge-go/internal/testsupport"
 )
 
 var errProbe = errors.New("probe failure")
 
 func newTestUnitOfWork(t *testing.T) (*UnitOfWork, *pgxpool.Pool) {
 	t.Helper()
-	url := os.Getenv("TEST_DATABASE_URL")
-	if url == "" {
-		t.Skip("TEST_DATABASE_URL is not set: provide a real PostgreSQL connection string")
-	}
-	pool, err := NewPool(Config{URL: url})
-	if err != nil {
-		t.Fatalf("NewPool(): %v", err)
-	}
-	t.Cleanup(pool.Close)
+	pool := testsupport.PostgresPoolOrSkip(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if _, err := pool.Exec(ctx, "CREATE TABLE IF NOT EXISTS uow_probe (id integer PRIMARY KEY)"); err != nil {
