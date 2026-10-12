@@ -297,11 +297,15 @@ func (d RetryReferenceDeps) referenceBackoff(attempt int) time.Duration {
 	if d.ReferenceBackoff != nil {
 		return d.ReferenceBackoff(attempt)
 	}
-	backoff := time.Second << (attempt - 1)
-	if backoff > 5*time.Minute {
-		backoff = 5 * time.Minute
+	// Bound the exponent before shifting: Duration is int64 and a large
+	// shift would wrap or become zero before a subsequent cap could help.
+	if attempt <= 1 {
+		return time.Second
 	}
-	return backoff
+	if attempt >= 10 {
+		return 5 * time.Minute
+	}
+	return time.Second << (attempt - 1)
 }
 
 func (d RetryReferenceDeps) validate() error {

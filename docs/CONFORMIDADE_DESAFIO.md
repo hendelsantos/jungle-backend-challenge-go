@@ -90,3 +90,7 @@ disputa 80+80 por HTTP, readiness) e suíte do worker de referências (reagenda,
 resolve após chegada da referência, rejeita por TTL, dois workers concorrentes
 sem duplicação, falha transitária com claim devolvido). SQS, outbox publisher e
 três processos continuam sem evidência de execução.
+
+### Revisão do backoff de referências (12/10/2026)
+
+O backoff limita o expoente antes do deslocamento de bits: 1s, 2s, …, 256s e teto de 5min a partir da décima tentativa. Isso evita overflow de `time.Duration` em pendências duradouras; TTL e regras de reagendamento permanecem iguais. Teste cobre limites, 1.000 tentativas e o maior `int` da plataforma.

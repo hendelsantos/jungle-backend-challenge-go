@@ -1053,3 +1053,7 @@ A entrega será considerada pronta para revisão quando for possível:
 12. Explicar todas as principais escolhas no `ARCHITECTURE.md` e, se necessário, oralmente.
 
 **Última lembrança:** o objetivo é construir garantias demonstráveis. Uma versão menor mas íntegra, claramente documentada, é melhor do que uma versão aparentemente completa com código que duplica dinheiro ou expõe transações de outros provedores. Porém os requisitos eliminatórios do enunciado precisam ser atendidos para a entrega final.
+
+### Revisão do backoff de referências (12/10/2026)
+
+O backoff limita o expoente antes do deslocamento de bits: 1s, 2s, …, 256s e teto de 5min a partir da décima tentativa. Isso evita overflow de `time.Duration` em pendências duradouras; TTL e regras de reagendamento permanecem iguais. Teste cobre limites, 1.000 tentativas e o maior `int` da plataforma.

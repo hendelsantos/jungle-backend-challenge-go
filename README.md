@@ -244,3 +244,7 @@ Para recriar o clone local em outro checkout:
 git clone https://github.com/junglegaming/backend-challenge-go.git references/backend-challenge-go
 git -C references/backend-challenge-go checkout bdd9e70b65db9b374ee070bd3a4768661a888997
 ```
+
+### Revisão do backoff de referências (12/10/2026)
+
+O backoff limita o expoente antes do deslocamento de bits: 1s, 2s, …, 256s e teto de 5min a partir da décima tentativa. Isso evita overflow de `time.Duration` em pendências duradouras; TTL e regras de reagendamento permanecem iguais. Teste cobre limites, 1.000 tentativas e o maior `int` da plataforma.
