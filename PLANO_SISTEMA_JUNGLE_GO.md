@@ -4,7 +4,7 @@
 > **Desafio:** Processamento Distribuído de Apostas em Go  
 > **Origem:** <https://github.com/junglegaming/backend-challenge-go>  
 > **Data do planejamento:** 12/10/2026  
-> **Estado:** Fase 0 concluída; Fase 1 com `Money` e `Wallet`. Validações e progresso registrados na seção 13. Demais itens da Fase 1 e Fases 2–6 pendentes.
+> **Estado:** Fase 0 concluída; Fase 1 com `Money`, `Wallet` e `WagerTransaction`. Validações e progresso registrados na seção 13. Ledger/eventos e revisão final da Fase 1, além das Fases 2–6, pendentes.
 
 ---
 
@@ -574,13 +574,13 @@ Evitar `walletId`, `playerId`, `providerId` dinâmicos como labels de alta cardi
 
 - [x] `Money`: `0.00`, `1`, `1.0`, `1.00`, overflow, underflow, `MinInt64`, diferentes moedas, valores inválidos, JSON string, negação/comparação.
 - [x] `Wallet`: criação, reidratação, débito/crédito, saldo zero/insuficiente, overflow, versão e moedas diferentes.
-- [ ] `WagerTransaction`: transições válidas, terminal imutável, pending reference, códigos estáveis.
-- [ ] `BET`: positivo, insuficiência de saldo.
-- [ ] `WIN`: positivo, crédito e vínculo opcional validado.
-- [ ] `LOSS`: exclusivamente `0.00`, sem ledger e sem incremento de versão.
-- [ ] `REFUND`: BET processada, mesma moeda/rodada/valor, compensação única.
-- [ ] `ROLLBACK`: inversão de BET/WIN/REFUND, insuficiência de saldo de reversão.
-- [ ] `OPENING`: somente origem interna, metadados externos nulos, zero vs positivo.
+- [x] `WagerTransaction`: transições válidas, terminal imutável, pending reference, códigos estáveis.
+- [x] `BET`: positivo, insuficiência de saldo.
+- [x] `WIN`: positivo, crédito e vínculo opcional validado.
+- [ ] `LOSS`: exclusivamente `0.00`, sem ledger e sem incremento de versão (valor/estado/versão testados; ledger pendente).
+- [x] `REFUND`: BET processada, mesma moeda/rodada/valor, compensação única (política unitária; garantia SQL pendente).
+- [x] `ROLLBACK`: inversão de BET/WIN/REFUND, insuficiência de saldo de reversão.
+- [ ] `OPENING`: somente origem interna, metadados externos nulos, zero vs positivo (construtores e resultado testados; abertura com ledger/eventos pendente).
 - [ ] Hash canônico HTTP/SQS igual, payload diferente com mesma chave em conflito.
 
 ### 11.2 Integração real
@@ -656,7 +656,7 @@ O próximo incremento é `Money`, conforme seção 16.3. Não há endpoints de n
 ### Fase 1 — Domínio financeiro isolado
 - [x] Criar `Money` e testes de parsing/overflow/moeda.
 - [x] Criar `Wallet` e testes de débito/crédito/versão.
-- [ ] Criar transação, estados e políticas para seis kinds.
+- [x] Criar transação, estados e políticas para seis kinds.
 - [ ] Criar ledger entry e eventos tipados sem dependência de infraestrutura.
 - [ ] Revisar invariantes e rodar `go test -race ./...`.
 
@@ -677,6 +677,16 @@ erros e operações de valor zero preservam todo o estado. `make check` e `make 
 passaram. A cobertura de instruções do pacote foi 98,3%; o fuzzing de sequências passou
 com 252.946 execuções em 10s. Unicidade, concorrência entre processos e ledger atômico
 continuam pendentes de persistência. Próximo incremento: transação, estados e políticas.
+
+**Incremento WagerTransaction — 12/10/2026:** implementado em `internal/domain/wagering`,
+com construtores externo/interno, reidratação validada, estados terminais imutáveis,
+resultado financeiro por valor e políticas para os seis tipos. Referências ausentes ou
+pendentes suspendem o processamento; escopo/tipo/valor incompatível ou referência
+terminal sem sucesso rejeitam a operação. Compensação direta única definida na ADR 0001.
+`make check` e `make build` passaram; cobertura de instruções de 97,1% no pacote.
+Fuzzing BET → REFUND → ROLLBACK passou com 308.540 execuções em 10s.
+Não há ainda idempotência persistente, coordenação SQL, ledger, eventos ou worker de retry.
+Próximo incremento: lançamento imutável de ledger e eventos tipados.
 
 ### Fase 2 — Persistência transacional e abertura
 - [ ] Criar migrations: wallets, transactions, ledger, inbox, outbox.

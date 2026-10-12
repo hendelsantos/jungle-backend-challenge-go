@@ -2,7 +2,7 @@
 
 ## Estado e direção
 
-A Fase 0 está concluída e a Fase 1 possui `Money` e `Wallet`. A direção é uma arquitetura hexagonal enxuta: domínio independente, casos de uso compartilhados por HTTP e SQS, adaptadores para entrada e persistência, e composição centralizada. A precisão monetária e as invariantes da carteira em memória estão implementadas; as garantias transacionais e distribuídas ainda estão pendentes.
+A Fase 0 está concluída e a Fase 1 possui `Money`, `Wallet` e `WagerTransaction`. A direção é uma arquitetura hexagonal enxuta: domínio independente, casos de uso compartilhados por HTTP e SQS, adaptadores para entrada e persistência, e composição centralizada. Precisão monetária, invariantes da carteira e políticas de aposta estão implementadas em memória; as garantias transacionais e distribuídas ainda estão pendentes.
 
 Dependências planejadas:
 
@@ -78,15 +78,70 @@ Erros dos campos em JSON preservam as classificações de moeda, formato e overf
 
 Os testes exercitam criação zero/positiva, reidratação, estado inválido, moedas distintas, débito até zero, insuficiência, overflow monetário e de versão, timestamps e independência das cópias. O fuzzing executa sequências de movimentos contra um saldo calculado com `math/big.Int`, verificando preservação de estado em rejeições e atualização de versão em sucessos.
 
+## WagerTransaction — terceiro incremento da Fase 1
+
+`internal/domain/wagering` mantém o pedido, o estado, as datas, a referência interna resolvida, o código de falha e o resultado financeiro em estado privado. `Snapshot` e `Result` devolvem cópias, sem referências mutáveis ao agregado. IDs e horário são fornecidos pelo chamador.
+
+**Entrada:** `NewExternal` exige IDs não nulos, provedor, ID externo, chave de idempotência, hash, rodada, jogo, tipo e `Money` válido. O hash deve ter o formato SHA-256 hexadecimal minúsculo; o cálculo canônico e a detecção de conflitos ainda não estão implementados e serão responsabilidade da aplicação. Ele nunca deverá ser confiado ao cliente. Campos textuais obrigatórios não podem ser vazios ou conter apenas espaços; não são normalizados silenciosamente.
+
+`BET`, `WIN`, `REFUND` e `ROLLBACK` exigem valor positivo; `LOSS` exige zero. Quantias inválidas são erros de contrato (`ErrInvalidAmount`) antes de criar a transação. `REFUND`/`ROLLBACK` exigem referência; `WIN` permite referência opcional a BET. Referências em BET/LOSS, referências vazias compostas de espaços e autorreferência externa são rejeitadas como contrato inválido.
+
+**Abertura:** `OPENING` é proibido no construtor externo. `NewOpening` recebe identidade, carteira, jogador e quantia sem os metadados externos. A origem interna é determinada por `Kind == OPENING`. Sua identidade estável deverá ser reutilizada pelo caso de uso e protegida por unicidade no banco. O domínio permite valor zero, mas a criação de carteira com zero deverá omitir OPENING, ledger e eventos financeiros. Ao processar uma abertura positiva, a carteira deve já conter exatamente esse saldo, versão 1 e instante de criação correspondente; não se credita novamente. Ledger de abertura e eventos serão criados na próxima etapa, com confirmação SQL posterior.
+
+**Transições implementadas:**
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING
+    PENDING --> PROCESSED
+    PENDING --> REJECTED
+    PENDING --> FAILED
+    PENDING --> PENDING_REFERENCE
+    PENDING_REFERENCE --> PENDING_REFERENCE: referência ainda pendente
+    PENDING_REFERENCE --> PROCESSED
+    PENDING_REFERENCE --> REJECTED
+    PENDING_REFERENCE --> FAILED
+```
+
+`Process` é permitido somente em PENDING e PENDING_REFERENCE. PROCESSED, REJECTED e FAILED são terminais: uma nova chamada retorna `ErrInvalidTransition` sem alterar carteira ou transação. O futuro caso de uso de replay deverá devolver `Result`, sem chamar `Process` novamente. `Rehydrate` valida combinações de estado, resultado, referência e código sem executar movimentações. Datas são UTC e transições não aceitam instantes anteriores à última atualização.
+
+**Processamento:** `Process(wallet, reference, at)` recebe dados já carregados pela aplicação. Ele valida carteira/jogador e trabalha sobre uma cópia da carteira. Apenas após validar o próximo estado da transação copia o saldo calculado para o agregado original. Erros retornados deixam ambos os agregados intactos. Rejeição de negócio é uma avaliação concluída: retorna `nil`, define REJECTED e `FailureCode`, preservando a carteira. O chamador deve sempre examinar `Status`; `nil` não significa necessariamente PROCESSED.
+
+Quando uma carteira foi consultada, conclusões e rejeições guardam saldo/versão observados. Movimentos posteriores não alteram esse resultado. Uma rejeição por moeda incompatível guarda o saldo real na moeda da carteira. `Reject(code, at)`, usado por exemplo na expiração de referência, pode finalizar sem resultado financeiro quando não houve leitura da carteira; a API futura deverá representar essa ausência sem inventar um saldo zero.
+
+**Referências:** são conferidos ID externo, provedor, carteira, jogador, moeda e rodada, além de impedir autorreferência interna. Não há uma restrição adicional de mesmo jogo: o enunciado exige mesma rodada. WIN e REFUND referenciam BET; ROLLBACK referencia BET, WIN ou REFUND. Referência ausente ou ainda pendente resulta em PENDING_REFERENCE sem efeito financeiro. Referência que terminou rejeitada/falha causa rejeição definitiva. WIN pode pagar valor diferente da aposta; REFUND e ROLLBACK exigem valor integral igual.
+
+A [ADR 0001](docs/adr/0001-compensacao-direta.md) define uma única compensação direta bem-sucedida. `Reference.Compensated` representa uma consulta à persistência; não deve vir de HTTP/SQS. A referência original não é modificada. Falta implementar a coordenação SQL e o índice único que tornarão essa política segura entre processos.
+
+**Movimentação:** BET debita; WIN e REFUND creditam; LOSS mantém inclusive versão e timestamp da carteira; ROLLBACK de BET credita; ROLLBACK de WIN/REFUND debita. Insuficiência na reversão tem código diferente da aposta. Overflow monetário é rejeição auditável. Estouro de versão ou estado inválido retorna erro sem efeitos; não é convertido automaticamente em falha de infraestrutura.
+
+| Código persistível | Situação |
+| --- | --- |
+| `INSUFFICIENT_FUNDS` | BET sem saldo suficiente |
+| `REVERSAL_INSUFFICIENT_FUNDS` | Reversão debitadora sem saldo |
+| `REFERENCE_NOT_FOUND` | Prazo/tentativas esgotados, decidido pelo futuro worker |
+| `REFERENCE_NOT_PROCESSED` | Referência terminou sem sucesso |
+| `REFERENCE_SCOPE_MISMATCH` | Referência de outro escopo/ID ou autorreferência interna |
+| `REFERENCE_AMOUNT_MISMATCH` | Compensação não integral |
+| `INVALID_REFERENCE_KIND` | Tipo da referência incompatível |
+| `ALREADY_REVERSED` | Referência já compensada diretamente |
+| `WALLET_CURRENCY_MISMATCH` | Moeda da operação diferente da carteira |
+| `BALANCE_OVERFLOW` | Crédito ultrapassaria o limite monetário |
+| `PERMANENT_INFRASTRUCTURE_FAILURE` | Falha permanente explicitamente diagnosticada |
+
+`FailPermanent` é uma transição explícita para FAILED. Falhas transitórias de PostgreSQL/SQS devem manter a operação passível de retry; este pacote não acessa infraestrutura nem classifica erros de I/O. A aplicação deverá distinguir essas situações antes de chamar a transição.
+
+**Limites:** o processamento atual é de domínio em memória, sem ledger/eventos nem publicação. A aplicação terá de confirmar carteira, transação, ledger, inbox e outbox em uma única transação SQL. Não há ainda hash canônico, idempotência durável, contador de tentativas, deadline, backoff ou worker de referências. Reidratar uma pendência é testado; recuperação após reiniciar processos e banco continua pendente. Os agregados não devem ser compartilhados entre goroutines.
+
 ## Decisões previstas, ainda não implementadas
 
 O plano mestre detalha as escolhas que serão confirmadas com código e testes:
 
-- Transações de aposta com estados e políticas para `OPENING`, `BET`, `WIN`, `LOSS`, `REFUND` e `ROLLBACK`; ledger e eventos tipados.
+- Lançamentos imutáveis de ledger e eventos tipados, incluindo os efeitos da abertura positiva.
 - PostgreSQL com `pgx`, SQL explícito e transação única para estado financeiro, ledger, inbox e outbox; constraints protegendo invariantes.
 - Coordenação por carteira entre processos; idempotência persistente e resultado original disponível para replay.
 - Compensação direta única por transação, referências pendentes duráveis e retries limitados.
 - Keycloak/OIDC, escopo por provedor e operações internas autorizadas.
 - SQS com inbox, outbox após commit e recuperação de publicação com IDs estáveis.
 
-Esses itens não estão concluídos. Migrations, ambiente Compose, endpoints de negócio, métricas e testes distribuídos serão acrescentados nas fases seguintes. O próximo incremento do domínio será `WagerTransaction`, com transições de estado e políticas das operações.
+Esses itens não estão concluídos. Migrations, ambiente Compose, endpoints de negócio, métricas e testes distribuídos serão acrescentados nas fases seguintes. O próximo incremento do domínio será ledger e eventos tipados.
