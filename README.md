@@ -6,6 +6,8 @@ Solução em desenvolvimento para o [desafio de processamento distribuído de ap
 
 Ainda faltam endpoints de negócio autenticados, Keycloak/OIDC, SQS/inbox/publisher, worker de referências, Compose, readiness e runner de migrations. Referências ausentes ficam persistidas em `PENDING_REFERENCE`, mas ainda não são retomadas automaticamente. O acompanhamento está em [PLANO_SISTEMA_JUNGLE_GO.md](PLANO_SISTEMA_JUNGLE_GO.md). Prazo interno: **14/10/2026**.
 
+A [matriz de conformidade](docs/CONFORMIDADE_DESAFIO.md) relaciona as exigências oficiais à implementação, aos testes e às pendências. O README oficial prevalece sobre o plano interno; a entrega só estará concluída com os requisitos obrigatórios demonstrados no ambiente exigido.
+
 ## Executar localmente
 
 Pré-requisitos: Go **1.27.2**, Git e Make. Docker é necessário para executar a imagem; Docker Compose será usado nas próximas fases. O Go pode baixar automaticamente a toolchain indicada em `go.mod` quando `GOTOOLCHAIN=auto`.

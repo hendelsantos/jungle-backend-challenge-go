@@ -1,5 +1,7 @@
 # Fluxo de desenvolvimento
 
+- O README oficial em `docs/reference/README_DESAFIO.md` é a fonte normativa dos requisitos. O plano organiza a execução; em caso de divergência, corrigir o plano e a implementação para respeitar o enunciado. Distinguir obrigações, recomendações e opções explicitamente permitidas pelo desafio.
+- Manter `docs/CONFORMIDADE_DESAFIO.md` atualizado: cada requisito precisa de implementação e evidência no nível exigido. Testes unitários não substituem integração real; goroutines não substituem três processos; persistir outbox ou pendência não conclui publicação ou recuperação. Não declarar a entrega pronta com requisitos obrigatórios pendentes.
 - Seguir o `PLANO_SISTEMA_JUNGLE_GO.md`, trabalhando em um incremento pequeno por vez.
 - Usar `docs/reference/README_DESAFIO.md` como referência do enunciado e preservar o clone oficial em `references/backend-challenge-go`.
 - Antes de concluir cada incremento, executar as verificações pertinentes e atualizar o plano, o README e a arquitetura quando necessário.

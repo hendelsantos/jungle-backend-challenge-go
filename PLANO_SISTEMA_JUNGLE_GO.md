@@ -822,6 +822,13 @@ uso `ProcessWager` (BET/WIN/LOSS/REFUND/ROLLBACK com `FOR UPDATE`, idempotência
 e hash canônico).
 
 ### Fase 3 — OIDC, endpoints e operação síncrona
+
+**Controle de aderência — 12/10/2026:** consultar [docs/CONFORMIDADE_DESAFIO.md](docs/CONFORMIDADE_DESAFIO.md)
+antes de fechar cada incremento. O README oficial prevalece sobre este plano. ProcessWager
+concluído não conclui a API, autenticação ou demonstração distribuída. O próximo incremento
+segue os critérios de OIDC/Keycloak e contratos HTTP da matriz; os requisitos do desafio
+só são encerrados com evidência no nível exigido.
+
 - [ ] Provisionar Keycloak; validar tokens, issuer/audience e roles.
 - [ ] Restringir operações internas e escopo por provedor.
 - [ ] Criar endpoints e contrato JSON/erros.
