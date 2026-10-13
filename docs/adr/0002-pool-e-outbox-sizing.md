@@ -28,11 +28,13 @@
 ## Consequências
 
 - Throughput financeiro não depende do pool nos níveis testados; o ganho de 24 conns é
-  p99 (~10%) e saibação de esperas (4–5× menor) — sem custo relevante (72 conns totais < 100).
+  p99 (~10% menor) e redução de esperas de aquisição (4–5× menor) — sem custo relevante
+  (72 conns totais < 100 de `max_connections`).
 - Pools maiores que 24 foram rejeitados: o Postgres entrou em saturação (p99 3,5 s) —
   o limite real é o servidor, não o pool.
-- Publisher com 3 workers/réplica drena 4× em 12s (the "média-pausa" produtiva);
-  as garantias at-least-once: claim exclusivo `FOR UPDATE SKIP LOCKED`, lease/token
-  por evento, ack condicional; sem transação SQL aberta durante o I/O SQS; crash
-  recuperado por failpoint (mesmo `eventId` republicado).
+- Publisher com 3 workers por réplica drena o backlog de referência (21–27k eventos)
+  em ~51 s, contra ~184 s com 1 worker — 2,8× mais rápido e reprodutível. As garantias
+  at-least-once se mantêm: claim exclusivo `FOR UPDATE SKIP LOCKED`, lease/token por
+  evento, ack condicional ao token; nenhuma transação SQL aberta durante o I/O SQS;
+  crash entre envio e ack recupera o mesmo `eventId` (failpoint + kills literais).
 - Reversível: qualquer valor volta ao env por override, sem código novo.
