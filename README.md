@@ -68,11 +68,16 @@ oficial é o comando `migrate`:
 export DATABASE_URL='postgres://jungle:jungle-local@localhost:55432/jungle?sslmode=disable'
 make migrate-up          # aplica todas as migrations pendentes; reexecutar é seguro
 make migrate-version     # mostra a versão registrada (`none` = histórico vazio)
-make migrate-down N=1    # rollback destrutivo da última migration (desenvolvimento)
 export OIDC_ISSUER=http://localhost:58080/realms/jungle
 export OIDC_AUDIENCE=jungle-api
 make run
 ```
+
+`make migrate-down N=1` é um rollback **destrutivo** da última migration —
+NÃO está no fluxo acima de propósito: usar apenas em banco de desenvolvimento
+disponível e reaplicar com `make migrate-up` antes de iniciar a aplicação
+(remover a migration de inbox/outbox deixa o runtime sem as estruturas
+financeiras).
 
 O harness também cria registros de teste com identidades únicas. A aplicação usa
 `DATABASE_URL`; `TEST_DATABASE_URL` é exclusivo dos testes.

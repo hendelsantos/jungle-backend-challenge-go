@@ -75,7 +75,7 @@ external_status() { # external_status EXTERNAL-ID
 
 not_visible() { # ApproximateNumberOfMessagesNotVisible of the intake queue
   $COMPOSE exec -T localstack sh -c \
-    "awslocal sqs get-queue-attributes --queue-url '$queue_url' --attribute-names ApproximateNumberOfMessagesNotVisible 2>/dev/null" | awk '/NotVisible/{print $NF}'
+    "awslocal sqs get-queue-attributes --queue-url '$queue_url' --attribute-names ApproximateNumberOfMessagesNotVisible --query 'Attributes[0].Value' --output text 2>/dev/null" | tr -d '[:space:]'
 }
 
 # The intake queue is provisioned by the api replicas at startup; after a
@@ -128,14 +128,22 @@ SQS_ENDPOINT_URL="$SQS_URL" SQS_PROVIDER_KEY="$PROVIDER_KEY" \
 # three processes at once. Whatever the moment of death before (rollback
 # restarts) or after the commit (re-delivery replays the inbox), the identity
 # in PostgreSQL decides: exactly one debit.
+# The exact window (commit done, DeleteMessage pending) is deterministic in
+# the Go integration suite (failpoint). Here the drill syncs on the observable
+# broker signal (not-visible) and FAILS when neither the window was observed
+# nor the wager is already terminal: a kill without precondition proves nothing.
 inflight=""
-for _ in $(seq 1 30); do
+for _ in $(seq 1 120); do
   n=$(not_visible)
-  case "$n" in ''|[!0-9]*) sleep 1; continue ;; esac
+  case "$n" in ''|[!0-9]*) sleep 0.25; continue ;; esac
   if [ "$n" -ge 1 ]; then inflight="$n"; break; fi
-  sleep 1
+  if [ "$(external_status "$externalId" 2>/dev/null || echo none)" = "PROCESSED" ]; then
+    inflight="completed-before-kill"; break
+  fi
+  sleep 0.25
 done
-[ -n "$inflight" ] && echo "  message held in flight by a replica: $inflight" || echo "  message not observed in flight; killing anyway (still a valid drill)"
+[ -n "$inflight" ] || fail "failed to observe the in-flight window within 30s"
+echo "  precondition observed: $inflight"
 $COMPOSE kill -s KILL api >/dev/null 2>&1 || fail "docker kill api"
 echo "  three api processes killed while the message was possibly in flight"
 $COMPOSE up -d api >/dev/null 2>&1
