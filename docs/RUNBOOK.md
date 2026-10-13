@@ -88,10 +88,10 @@ motivo; não é permitido deletar a fila para "sumir" com o problema.
 `difference = stored − computed`).
 
 **Resposta:** congelar operações da carteira afetada (revogar credencial do
-provedor se necessário), coletar `wallet_ledger_entries` ordenados, transações
-com `result_*` e a fraudagem esperada no alert. NENHUMA correção automática
-existe no sistema por design — decisão manual com trilha auditável (SQL de
-correção como novo lançamento, nunca UPDATE no ledger; revisão humana).
+provedor se necessário), coletar `wallet_ledger_entries` ordenados, as transações com `result_*` e o
+ledger completo para investigação. NENHUMA correção automática existe no
+sistema por design — decisão manual com trilha auditável (a correção entra
+como NOVO lançamento, nunca `UPDATE` no ledger; revisão humana documentada).
 
 ## 7. Pool PostgreSQL saturado
 

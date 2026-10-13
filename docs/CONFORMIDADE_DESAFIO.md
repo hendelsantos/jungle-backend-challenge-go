@@ -2,11 +2,9 @@
 
 Fonte normativa: [README original preservado](reference/README_DESAFIO.md), commit
 `bdd9e70b65db9b374ee070bd3a4768661a888997`; [procedência](reference/SOURCE.md).
-Revisão de 12/10/2026 sobre a implementação local das Fases 3, 4 e primeiro incremento da Fase 5.
+Revisão final de 13/10/2026 sobre a implementação completa (Fases 0–6; ver histórico das revisões anteriores abaixo).
 
-**A entrega completa ainda não está pronta.** O plano define a ordem dos incrementos;
-o enunciado define o comportamento e as evidências exigidas. Uma fase interna concluída
-não significa que o requisito integrado correspondente foi demonstrado.
+**Estado: requisitos obrigatórios demonstrados com evidência real; diferenciais opcionais (partidas dobradas, tracing, dashboards) fora do escopo do prazo.** A matriz abaixo foi auditada seção por seção contra o código e os testes.
 
 ## Requisitos e evidências
 
@@ -150,5 +148,7 @@ falta de ambiente (pacotes sem arquivos de teste não contam como casos).
 - Shutdown durante SQL ativo: rollback e receipt imediatamente disponível.
 - Provisionamento corrige redrive existente; readiness retorna 503 ao remover fila.
 
-Ainda faltam publicação efetiva dos eventos, dois publishers, métricas, execução
-com três processos, interrupção/reinício literal e reprodução do Compose final.
+Nota de fechamento (13/10/2026): a publicação efetiva dos eventos, os publishers
+múltiplos (A/B de workers), as métricas exigidas, a execução com três processos
+reais, as interrupções/reinícios literais (`scripts/fault.sh`) e o Compose de
+entrega reproduzível estão implementados e evidenciados nas seções acima.

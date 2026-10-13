@@ -9,7 +9,7 @@
 | Ameaça | Vetor | Controle implementado | Evidência |
 | --- | --- | --- | --- |
 | Falsificação de mensagem SQS | produtor forjando `providerId`/payload | HMAC-SHA256 por provedor obrigatório vinculado ao corpo; envelho inválido/permanent → DLQ; `OPENING` sempre rejeitada | `sqs/auth_test.go`, integração com broker real |
-| Acesso entre provedores | JWT de provedor A operando na carteira B | `provider_id` vem do token (nunca do body); rota/consulta/replay/conflito isolados; `403`/`404` sem vazamento | `api_integration_test.go` (Valida rastro por banco: saldo/ledger/outbox intactos) |
+| Acesso entre provedores | JWT de provedor A operando na carteira B | `provider_id` vem do token (nunca do body); rota/consulta/replay/conflito isolados; `403`/`404` sem vazamento | `api_integration_test.go` (validação por banco: saldo/ledger/outbox intactos) |
 | Replay de requisições | reuso da mesma chave/corpo | identidade persistente `(provider, idempotency_key)` e `(provider, external_id)`; replay legítimo devolve resultado armazenado; conteúdo divergente → `409` | `process_wager_integration_test.go` |
 | Token inválido/expirado/audience errada | JWT falsificado ou de outro realm | JWKS com rotação, RS256 apenas, `iss/aud/exp/nbf/typ/azp`, clock padrão do go-oidc; cliente de 3 s da vida real teste expiração | integração real com Keycloak |
 | Vazamento de credenciais | segredos no repositório | Gitleaks na CI + histórico completo (`no leaks found` 25 commits); segredos de desenvolvimento marcados como exclusivos do compose local | `ci.yml`, `docs/QA_RELATORIO_FINAL.md` |

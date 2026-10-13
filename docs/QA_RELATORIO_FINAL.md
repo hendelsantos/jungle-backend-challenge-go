@@ -43,7 +43,7 @@ encontrado (P0 eliminatório, P1 crítico, P2 importante, P3 opcional).
 | Observabilidade — métricas exigidas | APROVADO | registro Prometheus dedicado (operações por kind/status, replays, conflitos, histograma de latência, retries de transação, redeliveries, DLQ, outbox pendência/atraso, divergências), sem alta cardinalidade |
 | Documentação | APROVADO | README operacional, ADRs, matriz de conformidade, arquitetura por incremento |
 | Segredos | APROVADO | Gitleaks no histórico completo: `no leaks found` + varredura manual |
-| Diferenciais opcionais (partidas dobradas, tracing, dashboards, carga) | NÃO TESTADO — explicitamente não entregue | registrado como limitação em `ARCHITECTURE.md` e na matriz de conformidade |
+| Diferenciais opcionais (partidas dobradas, tracing, dashboards) | NÃO TESTADO — explicitamente fora do escopo do prazo | registrado como limitação em `ARCHITECTURE.md` e na matriz; testes de carga existem em `docs/PERFORMANCE_REPORT.md` |
 
 ## 2. Achados desta rodada de QA
 
@@ -107,7 +107,7 @@ encontrado (P0 eliminatório, P1 crítico, P2 importante, P3 opcional).
 
 **GO para entrega.** Nenhum requisito eliminatório pendente; todos os critérios de
 "pronto para entrega" da missão estão satisfeitos com evidência reproduzível. Os itens
-não entregues são os próprios diferenciais opcionais, declarados ostensivamente.
+os itens fora do escopo são os diferenciais opcionais (partidas dobradas, tracing, dashboards), declarados ostensivamente; testes de carga foram entregues (`tests/load/` + `docs/PERFORMANCE_REPORT.md`).
 
 ## 7. Demonstração sugerida (5–10 minutos)
 

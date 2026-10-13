@@ -14,8 +14,8 @@ k6 version                            # v2.3.0 usado nos experimentos (k6 CLI)
 
 - Gateway `http://localhost:9080`, IdP `http://localhost:59080` (defaults).
 - Tokens são obtidos por `client_credentials` nos clientes de desenvolvimento.
-- O verificador independente usa Banco com SQL somente leitura
-  (`127.0.0.1:59532`, publicado pelo Compose).
+- O verificador independente usa banco com SQL somente leitura
+  (`127.0.0.1:59532`, publicado pelo Compose de entrega).
 
 ## Cenários
 

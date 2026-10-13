@@ -4,7 +4,7 @@
 > **Desafio:** Processamento Distribuído de Apostas em Go  
 > **Origem:** <https://github.com/junglegaming/backend-challenge-go>  
 > **Data do planejamento:** 12/10/2026  
-> **Estado:** Fases 0, 1 e 2 concluídas; Fases 3 e 4 concluídas: `ProcessWager`, endpoints financeiros autenticados por OIDC/Keycloak verificados com IdP e PostgreSQL reais, readiness com ping do banco e worker distribuído de referências pendentes (`SKIP LOCKED`, backoff, TTL) verificado com PostgreSQL real. Migrations verificadas com trigger/CHECK automatizados, `pgx` (pool + `UnitOfWork`), abertura atômica, leitura de carteira, ledger com cursor e reconciliação em snapshot. Validações e progresso na seção 13. Fase 5 com consumidor SQS/inbox e publisher da outbox com claim/lease, backoff, republicação com mesmo `eventId`, dois publishers e falha publish/ack verificados com LocalStack e PostgreSQL reais. Compose de entrega e três processos pendentes (Fase 6).
+> **Estado:** Fases 0, 1 e 2 concluídas; Fases 3 e 4 concluídas: `ProcessWager`, endpoints financeiros autenticados por OIDC/Keycloak verificados com IdP e PostgreSQL reais, readiness com ping do banco e worker distribuído de referências pendentes (`SKIP LOCKED`, backoff, TTL) verificado com PostgreSQL real. Migrations verificadas com trigger/CHECK automatizados, `pgx` (pool + `UnitOfWork`), abertura atômica, leitura de carteira, ledger com cursor e reconciliação em snapshot. Validações e progresso na seção 13. Fase 5 com consumidor SQS/inbox e publisher da outbox (claim/lease, backoff, republicação com mesmo `eventId`, falha publish/ack) e Fase 6 concluídas: Compose de entrega com três réplicas atrás do gateway, kills literais (`scripts/smoke.sh`/`scripts/fault.sh`), migrations com runner (`cmd/migrate`), otimizações com A/B (pool pgx 24 conns e 3 publishers por réplica, evidências em `docs/PERFORMANCE_REPORT.md`/ADR 0002), métricas obrigatórias, CI e documentação consolidada. Diferenciais opcionais (tracing, dashboards, partidas dobradas) fora do escopo.
 
 ---
 
@@ -581,33 +581,33 @@ Evitar `walletId`, `playerId`, `providerId` dinâmicos como labels de alta cardi
 - [x] `REFUND`: BET processada, mesma moeda/rodada/valor, compensação única (política e integração SQL verificadas).
 - [x] `ROLLBACK`: inversão de BET/WIN/REFUND, insuficiência de saldo de reversão.
 - [x] `OPENING`: somente origem interna, metadados externos nulos, zero vs positivo, com ledger/eventos atômicos.
-- [ ] Hash canônico HTTP/SQS igual, payload diferente com mesma chave em conflito.
+- [x] Hash canônico HTTP/SQS igual, payload diferente com mesma chave em conflito (integração com IdP/broker reais).
 
 ### 11.2 Integração real
 
-- [ ] Subir PostgreSQL + Keycloak + LocalStack via Compose; aplicar e reverter migrations em ambiente de teste.
-- [ ] Testar constraints, triggers de imutabilidade, unicidade da carteira, saldo não negativo, abertura única.
-- [ ] Testar `client_credentials` real, token ausente/inválido/expirado, isolamento provider-a/provider-b, replay de outro provedor bloqueado.
+- [x] Subir PostgreSQL + Keycloak + LocalStack via Compose; migrations aplicadas/revertidas (`compose.dev.yaml` + `cmd/migrate`).
+- [x] Testar constraints, triggers de imutabilidade, unicidade da carteira, saldo não negativo, abertura única (integração PostgreSQL real).
+- [x] Testar `client_credentials` real, token ausente/inválido/expirado, isolamento provider-a/provider-b, replay de outro provedor bloqueado.
 - [x] Testar atomicidade: falha SQL na segunda escrita da outbox, depois do ledger → rollback de tudo.
-- [ ] Testar inbox com mesmo `messageId` e hash igual; reentrega com hash diferente detectada.
-- [ ] Testar processamento da mesma transação via HTTP e SQS sem novo movimento.
-- [ ] Testar inbox/outbox e comunicação real com SQS, redrive para DLQ, eventos tipados.
+- [x] Testar inbox com mesmo `messageId` e hash igual; reentrega com hash diferente detectada (integração SQS).
+- [x] Testar processamento da mesma transação via HTTP e SQS sem novo movimento (duas ordens + concorrência).
+- [x] Testar inbox/outbox e comunicação real com SQS, redrive para DLQ, eventos tipados.
 - [x] Testar outbox com dois publishers, lease abandonado e evento com mesmo ID republicado (integração real com LocalStack e schema isolado; failpoint determinístico para o crash).
-- [ ] Testar `PENDING_REFERENCE` após reinicialização; chegada posterior e expiração.
-- [ ] Testar Fx startup/shutdown (workers encerrando corretamente).
+- [x] Testar `PENDING_REFERENCE` após reinicialização; chegada posterior e expiração (`scripts/fault.sh` Teste H + integração do worker).
+- [x] Testar Fx startup/shutdown (workers encerrando corretamente; `bootstrap/lifecycle_test.go`).
 
 ### 11.3 Concorrência e falhas (critérios oficiais)
 
 - [x] **Teste A:** 50 requisições paralelas da MESMA BET → um débito e um ledger.
 - [x] **Teste B:** saldo `100.00`, duas BET distintas de `80.00` simultâneas → uma processada, uma rejeitada, saldo `20.00`, um débito.
 - [x] **Teste C:** carteiras distintas processadas simultaneamente sem lock global.
-- [ ] **Teste D:** repetir testes de concorrência com **pelo menos 3 processos independentes**, cada um com seu pool de conexão.
-- [ ] **Teste E:** matar consumidor após commit e antes de `DeleteMessage`; reentrega não duplica.
+- [x] **Teste D:** testes de concorrência com **pelo menos 3 processos independentes** (réplicas do Compose de entrega; distribuição 21/18/13 nos logs).
+- [x] **Teste E:** consumidor morto entre commit e `DeleteMessage` (failpoint de integração + kill -9 via `scripts/fault.sh`).
 - [x] **Teste F:** matar publisher depois de SQS aceitar o evento e antes de marcar publicado; replay mantém `eventId` (simulação determinística do crash entre claim e ack, com recuperação e republicação do mesmo `eventId` verificadas com LocalStack real; kill literal de processo fica para a Fase 6).
-- [ ] **Teste G:** refund/rollback chega antes da referência; depois resolver ou rejeitar após TTL.
-- [ ] **Teste H:** reiniciar todas as instâncias; resultado idempotente, pendências e finanças continuam íntegros.
-- [ ] **Teste I:** concorrer HTTP/SQS pelo mesmo external ID/key; um único resultado persistido.
-- [ ] **Teste J:** verificar reconciliação ledger = saldo final após cada cenário.
+- [x] **Teste G:** refund/rollback antes da referência; resolução posterior e rejeição por TTL (integração do worker + `scripts/fault.sh`).
+- [x] **Teste H:** reiniciar todas as instâncias; resultado idempotente, pendências e finanças íntegros (`scripts/fault.sh`).
+- [x] **Teste I:** HTTP/SQS concorrentes pelo mesmo external ID/key; um único resultado persistido (integração com broker real).
+- [x] **Teste J:** reconciliação ledger = saldo final verificada após cada cenário (integração + verificador independente `cmd/verifywallet`).
 - [x] **Teste K:** `go test -race` nos testes aplicáveis.
 
 **Instrumentação de falhas:** preferir failpoints **somente nos testes**, em pontos explícitos (`after_commit_before_sqs_delete`, `after_sqs_publish_before_outbox_ack`), nunca ativáveis em produção. Testes precisam confirmar efeitos no banco e recebimentos duplicados, não apenas comparar código HTTP.
@@ -896,7 +896,7 @@ e SQS/inbox/publisher (Fase 5).
 - [x] Worker distribuído com `SKIP LOCKED` e shutdown seguro.
 - [x] Rejeitar referência não encontrada, inválida, terminal ou mismatched conforme política.
 - [x] Testar chegada posterior, expiração e retomada por nova chamada ao worker.
-- [ ] Demonstrar recuperação por reinicialização literal de processos (Fase 6).
+- [x] Demonstrada a recuperação por reinicialização literal de processos (Teste H de `scripts/fault.sh`).
 
 **Pronto quando:** nenhuma referência pendente depende da memória de um processo.
 
@@ -935,7 +935,7 @@ SQS/inbox/consumidor com LocalStack (Fase 5).
 - [x] Publisher da outbox com concorrência, lease/backoff e event IDs estáveis.
 - [x] Testar cross-channel HTTP/SQS e falha injetada após commit com broker real.
 - [x] Falha entre publicação e confirmação (Teste F) com failpoint determinístico e broker real; republicação mantém `eventId`.
-- [ ] Testar interrupção literal do consumidor e do publisher (Testes E/F em processos mortos de verdade) na Fase 6.
+- [x] Interrupção literal do consumidor e do publisher (Testes E/F com kill -9 em `scripts/fault.sh`).
 
 **Pronto quando:** todas as garantias de at-least-once e recuperação passam nos containers reais.
 
@@ -968,7 +968,7 @@ temporário por execução: `up` aplica as quatro migrations com `version=4` lim
 histórico vazio limpo. No banco de desenvolvimento (schema aplicado pelo harness
 sem histórico do golang-migrate), `up` se recusou corretamente a reaplicar e
 `force 4` registrou o estado atual sem tocar dados — `version` mostra 4 e `up`
-seguinte foi no-op. Compose de entrega e três processos pendentes.
+seguinte foi no-op. Compose de entrega e três processos concluídos no incremento seguinte da Fase 6.
 
 ### Fase 6, incremento 2 — Compose de entrega e três processos (12/10/2026)
 
@@ -1182,8 +1182,9 @@ reais passaram. Testes de integração não foram ignorados por falta de ambient
 Filas isoladas por teste, sem purge de filas de desenvolvimento. Evidências e
 limites detalhados no README, arquitetura e matriz de conformidade.
 
-Próximo incremento: publisher da outbox (claim/lease, backoff, eventos estáveis,
-dois publishers e falhas entre publish/ack). O projeto ainda não está concluído.
+Na sequência este incremento foi concluído: publisher da outbox (claim/lease,
+backoff, eventos estáveis, dois publishers e falhas publish/ack) — ver o registro
+da Fase 5, incremento 2 abaixo.
 
 ### Fase 5, incremento 2 — publisher da outbox (12/10/2026)
 
@@ -1216,9 +1217,8 @@ com fila FIFO real: evento comprometido chega com corpo idêntico ao snapshot,
 envio e confirmação é recuperado com o mesmo `eventId`/payload (FIFO suprime a
 repetição na janela de deduplicação; identidade comprovada), quatro publishers
 concorrentes entregam dois eventos uma única vez cada. Filas e schema isolados
-por teste (`IsolatedPostgresPool`). Pendências: kill literal de processos (Testes
-E/F literais), Compose de entrega e três processos (Fase 6). O projeto ainda não
-está concluído.
+por teste (`IsolatedPostgresPool`). Na sequência: kills literais (E/F), Compose de
+entrega com três réplicas e auditoria de fechamento — ver registros da Fase 6.
 
 ### Revisão final de entrega — 12/10/2026
 

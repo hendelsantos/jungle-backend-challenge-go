@@ -37,7 +37,7 @@ Referências de composição: [servidor HTTP com Fx](https://uber-go.github.io/f
 
 `internal/domain/money` usa apenas a biblioteca padrão. O valor guarda `cents int64` e `currency string` em campos privados. Soma, subtração e negação retornam novos valores, sem alterar os operandos. A cópia de um `Money` é independente. Não há setters nem conversão entre moedas.
 
-**Moedas:** o tipo reconhece explicitamente `BRL` e `USD`, ambas com escala dois, para permitir comparação e testes reais de incompatibilidade entre valores válidos. Esta é uma precisão do plano inicial: a restrição BRL-only será da aplicação, ainda não implementada. Não aceitamos códigos arbitrários, minúsculos ou com espaços. Valores em moedas diferentes não podem ser somados, subtraídos, comparados ou considerados iguais; a operação retorna `ErrCurrencyMismatch`.
+**Moedas:** o tipo reconhece explicitamente `BRL` e `USD`, ambas com escala dois, para permitir comparação e testes reais de incompatibilidade entre valores válidos. Esta é uma precisão do plano inicial: a restrição BRL-only é aplicada pelos casos de uso (aplicação), com o domínio reconhecendo as duas moedas para testar incompatibilidades. Não aceitamos códigos arbitrários, minúsculos ou com espaços. Valores em moedas diferentes não podem ser somados, subtraídos, comparados ou considerados iguais; a operação retorna `ErrCurrencyMismatch`.
 
 **Limites:** os valores internos vão de `-92233720368547758.08` a `92233720368547758.07`. Os construtores de entrada externa aceitam apenas a parte não negativa desse intervalo. `FromMinorUnits` aceita todo `int64`, inclusive diferenças negativas de reconciliação; ele não representa por si só a regra de saldo não negativo da futura carteira.
 
@@ -68,7 +68,7 @@ Erros dos campos em JSON preservam as classificações de moeda, formato e overf
 
 **Identidade e relógio:** os construtores recebem IDs e horários; não geram identidades nem consultam `time.Now`. Usamos `github.com/google/uuid v1.6.0` como tipo de valor, rejeitando UUID nulo. A geração de UUID v7 ficará no caso de uso de criação. Essa biblioteca de identidade não introduz dependência de HTTP, Fx ou persistência no domínio. [Documentação do tipo UUID](https://pkg.go.dev/github.com/google/uuid@v1.6.0#UUID).
 
-**Criação e reidratação:** `New` recebe saldo inicial não negativo, define versão 1 e ambos os timestamps no instante fornecido. `Rehydrate(State)` valida e copia um snapshot, preservando saldo e versão, sem reaplicar crédito nem gerar eventos. Ambos usam as mesmas validações de estado. Um saldo inicial positivo não incrementa versão; a futura abertura transacional terá de criar `OPENING`, ledger e outbox no mesmo commit. Isso ainda não é executado pelo agregado.
+**Criação e reidratação:** `New` recebe saldo inicial não negativo, define versão 1 e ambos os timestamps no instante fornecido. `Rehydrate(State)` valida e copia um snapshot, preservando saldo e versão, sem reaplicar crédito nem gerar eventos. Ambos usam as mesmas validações de estado. Um saldo inicial positivo não incrementa versão; a abertura transacional (caso de uso `CreateWallet`) cria `OPENING`, ledger e outbox no mesmo commit, sem creditar duas vezes o mesmo saldo.
 
 **Movimentações:** `Debit` e `Credit` recebem `Money` e horário. Rejeitam valor não inicializado, moeda incompatível, quantia negativa e horário inválido. Débito exige saldo suficiente; crédito usa a proteção de overflow de `Money`. Somente depois de todas as validações são atribuídos novo saldo, versão incrementada e horário de atualização. A versão não pode ultrapassar `MaxInt64`. Qualquer rejeição preserva o estado inteiro. Zero é aceito como operação sem efeito, inclusive na versão máxima, mas ainda exige moeda e horário válidos. A política de `LOSS` pertence à futura transação de aposta, não a este agregado.
 
@@ -86,7 +86,7 @@ Os testes exercitam criação zero/positiva, reidratação, estado inválido, mo
 
 `internal/domain/wagering` mantém o pedido, o estado, as datas, a referência interna resolvida, o código de falha e o resultado financeiro em estado privado. `Snapshot` e `Result` devolvem cópias, sem referências mutáveis ao agregado. IDs e horário são fornecidos pelo chamador.
 
-**Entrada:** `NewExternal` exige IDs não nulos, provedor, ID externo, chave de idempotência, hash, rodada, jogo, tipo e `Money` válido. O hash deve ter o formato SHA-256 hexadecimal minúsculo; o cálculo canônico e a detecção de conflitos ainda não estão implementados e serão responsabilidade da aplicação. Ele nunca deverá ser confiado ao cliente. Campos textuais obrigatórios não podem ser vazios ou conter apenas espaços; não são normalizados silenciosamente.
+**Entrada:** `NewExternal` exige IDs não nulos, provedor, ID externo, chave de idempotência, hash, rodada, jogo, tipo e `Money` válido. O hash deve ter o formato SHA-256 hexadecimal minúsculo; o cálculo canônico e a detecção de conflitos são responsabilidade da aplicação e estão implementados em `ProcessWager` (JSON tipado ordenado, sem float). Ele nunca deverá ser confiado ao cliente. Campos textuais obrigatórios não podem ser vazios ou conter apenas espaços; não são normalizados silenciosamente.
 
 `BET`, `WIN`, `REFUND` e `ROLLBACK` exigem valor positivo; `LOSS` exige zero. Quantias inválidas são erros de contrato (`ErrInvalidAmount`) antes de criar a transação. `REFUND`/`ROLLBACK` exigem referência; `WIN` permite referência opcional a BET. Referências em BET/LOSS, referências vazias compostas de espaços e autorreferência externa são rejeitadas como contrato inválido.
 
@@ -135,7 +135,7 @@ A [ADR 0001](docs/adr/0001-compensacao-direta.md) define uma única compensaçã
 
 `FailPermanent` é uma transição explícita para FAILED. Falhas transitórias de PostgreSQL/SQS devem manter a operação passível de retry; este pacote não acessa infraestrutura nem classifica erros de I/O. A aplicação deverá distinguir essas situações antes de chamar a transição.
 
-**Limites:** o processamento atual é de domínio em memória, sem ledger/eventos nem publicação. A aplicação terá de confirmar carteira, transação, ledger, inbox e outbox em uma única transação SQL. Não há ainda hash canônico, idempotência durável, contador de tentativas, deadline, backoff ou worker de referências. Reidratar uma pendência é testado; recuperação após reiniciar processos e banco continua pendente. Os agregados não devem ser compartilhados entre goroutines.
+**Limites desta etapa (histórico da Fase 1):** o agregado de domínio não conhece persistência — as garantias transacionais vieram depois com a aplicação (UnitOfWork). O agregado continua sem ser compartilhado entre goroutines por design. As seções posteriores registram como a aplicação confirmou carteira, transação, ledger, inbox e outbox em uma única transação SQL.
 
 ## WalletLedgerEntry e eventos tipados — quarto incremento da Fase 1
 
@@ -153,7 +153,7 @@ A [ADR 0001](docs/adr/0001-compensacao-direta.md) define uma única compensaçã
 
 ## Persistência — schema PostgreSQL (Fase 2, primeiro incremento)
 
-Quatro migrations `up`/`down` em `migrations/` seguem a convenção do golang-migrate (runner ainda não integrado). Cada decisão do domínio tem contraparte no schema, e cada restrição foi verificada em container efêmero `postgres:17-alpine` com asserção do nome exato da constraint violada.
+Quatro migrations `up`/`down` em `migrations/` seguem a convenção do golang-migrate, com runner operacional em `cmd/migrate` (Makefile e Dockerfile). Cada decisão do domínio tem contraparte no schema, e cada restrição foi verificada em container efêmero `postgres:17-alpine` com asserção do nome exato da constraint violada.
 
 **Wallets:** `CHECK(balance_cents >= 0)`, `CHECK(version >= 1)`, moeda em lista explícita (`BRL`, `USD` — o schema aceita o que o domínio aceita; a restrição BRL-only da aplicação vem depois), `CHECK(updated_at >= created_at)` e índice único `(player_id, currency)`. Sem `DEFAULT` de horário: a aplicação fornece instantes UTC explícitos, coerente com os construtores do domínio.
 
@@ -187,7 +187,7 @@ Quatro migrations `up`/`down` em `migrations/` seguem a convenção do golang-mi
 
 **Harness de integração (`internal/testsupport`, tag `integration`):** cria o pool direto via `pgxpool` (não importa o adaptador, evitando ciclo de importação com os testes do próprio adaptador), aplica as migrations reais uma única vez por banco (`to_regclass('public.wallets')` como guarda — múltiplos binários de teste compartilham o schema sem recriá-lo) e nunca reseta dados: cada teste usa identidades únicas. Sem `TEST_DATABASE_URL` os testes pulam; com ela, nada é mockado.
 
-**Testes:** unitários do caso de uso com fakes de orquestração (ordem das escritas, zero vs positivo, conflito interrompe antes das escritas financeiras, erro tardio propaga, entradas inválidas não tocam portas) — 83,6% de cobertura unitária; os fakes não substituem infraestrutura, só verificam orquestração, e a semântica transacional/SQL é toda da suíte de integração. Integração contra PostgreSQL real: abertura positiva persiste carteira + `OPENING` + ledger + 2 eventos; zero não gera nada financeiro; duplicata retorna `ErrWalletAlreadyExists` sem efeitos; **falha no meio do caso de uso (ledger injetado) faz rollback de tudo**; jogadores independentes recebem carteiras independentes. Cobertura `postgres`: 41,0% unitária / 55,1% com integração (ramos restantes são tradução de erros SQL ainda não exercitados). Nada ainda cobre concorrência entre processos — os cenários oficiais (duas apostas de 80, 50 duplicatas) exigem o `ProcessWager` e três instâncias.
+**Testes:** unitários do caso de uso com fakes de orquestração (ordem das escritas, zero vs positivo, conflito interrompe antes das escritas financeiras, erro tardio propaga, entradas inválidas não tocam portas) — 83,6% de cobertura unitária; os fakes não substituem infraestrutura, só verificam orquestração, e a semântica transacional/SQL é toda da suíte de integração. Integração contra PostgreSQL real: abertura positiva persiste carteira + `OPENING` + ledger + 2 eventos; zero não gera nada financeiro; duplicata retorna `ErrWalletAlreadyExists` sem efeitos; **falha no meio do caso de uso (ledger injetado) faz rollback de tudo**; jogadores independentes recebem carteiras independentes. Cobertura `postgres`: 41,0% unitária / 55,1% com integração (ramos restantes são tradução de erros SQL ainda não exercitados). A concorrência entre processos é coberta pelas réplicas do Compose de entrega atrás do gateway (smoke/fault.sh) além das suítes de integração com goroutines.
 
 
 
@@ -220,7 +220,7 @@ providerId, referenceExternalTransactionId (quando presente), roundId, walletId
 
 `amount` é uma string normalizada para duas casas por `Money.FormatDecimal`; UUIDs são strings canônicas. `json.Marshal` produz o documento compacto, com o escape padrão do Go (inclusive `<`, `>` e `&`); não há normalização Unicode, de caixa ou de espaços de identificadores. Textos inválidos em UTF-8 ou com NUL são recusados. Referência vazia é omitida. Chave de idempotência, correlation ID e metadados de transporte não participam do hash. Um vetor fixo independente verifica o digest; formas decimais equivalentes e alterações dos campos de negócio também são testadas. A implementação usa JSON ordenado deste contrato, sem afirmar conformidade geral com RFC 8785.
 
-O futuro DTO HTTP/SQS deve converter ausência da referência para string vazia e rejeitar `null`, chaves repetidas e campos desconhecidos antes de chamar a aplicação. Esses parsers de transporte ainda não existem. Ambos usarão este mesmo cálculo; o cliente nunca fornece o hash confiável.
+Os DTOs HTTP e o envelope SQS rejeitam `null`, chaves repetidas, números e campos desconhecidos na fronteira (`internal/jsonx`), e a ausência de referência é convertida para string vazia antes da aplicação. Ambos usarão este mesmo cálculo; o cliente nunca fornece o hash confiável.
 
 `(provider_id, idempotency_key)` com hash igual retorna o estado persistido; hash diferente retorna `ErrIdempotencyConflict`. `(provider_id, external_transaction_id)` sob outra chave também é conflito, sem criar aliases. Para operações terminais o resultado é o saldo/versão original, sem reprocessar regras e sem novas escritas. A aplicação permanece **BRL-only**, inclusive para carteiras acessadas pelo comando; domínio/schema continuam aceitando USD para testes de moeda. Assim, o resultado persistido e a moeda da operação não divergem.
 
@@ -274,9 +274,9 @@ No futuro consumidor SQS, a UnitOfWork externa da inbox será dona do commit e d
 
 ## Trabalho ainda pendente
 
-- Revisão final de entregáveis (eliminatórias, `.env.example`, secrets, README consolidado).
+- Diferenciais opcionais do enunciado (partidas dobradas, tracing OpenTelemetry, dashboards e testes de carga formais no formato do §14) — explicitamente fora do escopo do prazo, registrados nas limitações.
 
-As seções anteriores registram a evolução por incremento; as garantias atuais do processamento estão descritas acima. A entrega completa continua pendente.
+As seções anteriores registram a evolução por incremento; as garantias atuais do processamento estão descritas acima. Os requisitos obrigatórios estão comprovados com evidência real; a lista consolidada está em `docs/CONFORMIDADE_DESAFIO.md` e `docs/QA_RELATORIO_FINAL.md`.
 
 
 ## Falhas literais — Fase 6, incremento 4
@@ -341,7 +341,7 @@ como métrica inválida na saída, nunca como zero velho.
 não permitir cardinalidade explosiva — identidade de jogador/carteira/provedor
 nunca vira rótulo; o correlationId permanece só nos logs JSON.
 
-As seções anteriores registram a evolução por incremento; as garantias atuais do processamento estão descritas acima. A entrega completa continua pendente.
+As seções anteriores registram a evolução por incremento; as garantias atuais do processamento estão descritas acima. Os requisitos obrigatórios têm evidência real; os diferenciais opcionais (tracing, dashboards, partidas dobradas) permanecem fora do escopo do prazo.
 
 
 ## Compose de entrega e três processos — Fase 6, incremento 2
