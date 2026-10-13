@@ -1,0 +1,86 @@
+# CI pipeline: fast checks on every push/PR; integration suite with real
+# PostgreSQL, Keycloak and LocalStack reuses compose.dev.yaml (the same
+# environment that works locally), with the realm imported by the container
+# itself. Minimal permissions, fixed versions, no secrets beyond defaults.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fast:
+    name: format, vet, unit tests, build, secrets, compose
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: gofmt
+        run: test -z "$(gofmt -l .)"
+      - name: go vet
+        run: go vet ./...
+      - name: vet integration build
+        run: go vet -tags=integration ./...
+      - name: unit tests with race detector
+        run: go test -race ./...
+      - name: build all commands
+        run: |
+          go build -trimpath -o bin/server ./cmd/server
+          go build -trimpath -o bin/migrate ./cmd/migrate
+          go build -trimpath -o bin/verifywallet ./cmd/verifywallet
+      - name: compose files are valid
+        run: |
+          docker compose -f compose.dev.yaml config -q
+          docker compose -f docker-compose.yml config -q
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+          $(go env GOPATH)/bin/govulncheck ./...
+      - name: gitleaks (full history)
+        run: docker run --rm -v "$GITHUB_WORKSPACE:/repo" ghcr.io/gitleaks/gitleaks:latest git /repo --no-banner --redact
+
+  integration:
+    name: integration suite (postgres + keycloak + localstack)
+    runs-on: ubuntu-latest
+    needs: fast
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: bring up real dependencies (realm included)
+        run: docker compose -f compose.dev.yaml up -d
+      - name: wait for the imported realm (readiness across keycloak)
+        run: |
+          ok=0
+          for i in $(seq 1 90); do
+            if curl -sfs http://localhost:58080/realms/jungle >/dev/null 2>&1; then ok=1; break; fi
+            sleep 2
+          done
+          test "$ok" = 1 || { docker compose -f compose.dev.yaml logs keycloak; exit 1; }
+      - name: integration suite with race detector
+        env:
+          TEST_DATABASE_URL: postgres://jungle:jungle-local@localhost:55432/jungle?sslmode=disable
+          TEST_OIDC_ISSUER: http://localhost:58080/realms/jungle
+          TEST_SQS_ENDPOINT: http://localhost:4566
+        run: go test -race -tags=integration ./... -count=1
+      - name: teardown dependencies
+        if: always()
+        run: docker compose -f compose.dev.yaml down -v
