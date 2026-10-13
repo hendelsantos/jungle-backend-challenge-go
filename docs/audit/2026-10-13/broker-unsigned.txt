@@ -1,0 +1,7 @@
+unsigned_list (200, {'QueueUrls': ['http://localhost:19570/queue/us-east-1/000000000000/wager-transactions-dlq.fifo', 'http://localhost:19570/queue/us-east-1/000000000000/wager-transactions.fifo', 'http://localhost:19570/queue/us-east-1/000000000000/wager-events.fifo']})
+unsigned_create 200
+unsigned_send 200
+unsigned_receive 200 messages 1
+unsigned_delete_message 200
+unsigned_delete_queue 200
+events_attributes (200, {'Attributes': {'CreatedTimestamp': '1791880517', 'DelaySeconds': '0', 'LastModifiedTimestamp': '1791880517', 'MaximumMessageSize': '1048576', 'MessageRetentionPeriod': '345600', 'QueueArn': 'arn:aws:sqs:us-east-1:000000000000:wager-events.fifo', 'ReceiveMessageWaitTimeSeconds': '0', 'VisibilityTimeout': '30', 'SqsManagedSseEnabled': 'true', 'ContentBasedDeduplication': 'false', 'DeduplicationScope': 'queue', 'FifoThroughputLimit': 'perQueue', 'FifoQueue': 'true', 'ApproximateNumberOfMessages': '13', 'ApproximateNumberOfMessagesDelayed': '0', 'ApproximateNumberOfMessagesNotVisible': '0'}})

@@ -1,0 +1,9 @@
+Isolated project: jungle-quality-audit
+Before restart: outbox total=13 published=13 pending=0; events queue visible=13.
+Action: docker compose -p jungle-quality-audit restart localstack
+After restart: unsigned ListQueues HTTP 200 {}; GetQueueUrl wager-events.fifo HTTP 400 QueueDoesNotExist.
+GET /health/ready HTTP 503: postgres=ok sqs=unavailable.
+Outbox remains total=13 published=13 pending=0.
+Action: docker compose -p jungle-quality-audit restart api
+After API restart: GET /health/ready HTTP 200; events queue visible=0 not_visible=0.
+Outbox remains total=13 published=13 pending=0. No external events consumer was run.

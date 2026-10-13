@@ -1,0 +1,26 @@
+Command exit status: 1 (go run); scanner: exit status 2
+go: downloading golang.org/x/vuln v1.1.4
+go: downloading golang.org/x/mod v0.22.0
+go: downloading golang.org/x/tools v0.29.0
+go: downloading golang.org/x/telemetry v0.0.0-20240522233618-39ace7a40ae7
+go: downloading golang.org/x/sync v0.10.0
+panic: unexpected expr: *ast.KeyValueExpr
+
+goroutine 3351 gp=0x2b82a3c141e0 m=3 mp=0x2b82a1a59008 [running]:
+panic({0xd7e0a0?, 0x2b82d4088eb0?})
+	/home/hendel/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.2.linux-amd64/src/runtime/panic.go:878 +0x159 fp=0x2b82bcd6cdf8 sp=0x2b82bcd6cd50 pc=0x487bb9
+golang.org/x/tools/go/ssa.(*builder).expr0(0x2b82c7ea8b10?, 0x2b82aefcc200?, {0xdf54e8?, 0x2b82a645b920?}, {0x0, {0x0, 0x0}, {0x0, 0x0}})
+	/home/hendel/go/pkg/mod/golang.org/x/tools@v0.29.0/go/ssa/builder.go:958 +0x206e fp=0x2b82bcd6d110 sp=0x2b82bcd6cdf8 pc=0x81e3ee
+golang.org/x/tools/go/ssa.(*builder).expr(0x2b82c7ea8b10, 0x2b82aefcc200, {0xdf54e8, 0x2b82a645b920})
+	/home/hendel/go/pkg/mod/golang.org/x/tools@v0.29.0/go/ssa/builder.go:633 +0x13b fp=0x2b82bcd6d1a0 sp=0x2b82bcd6d110 pc=0x81c29b
+golang.org/x/tools/go/ssa.(*builder).assign(0x28?, 0x2b82aefcc200, {0xdf6468, 0x2b82d408f1a0}, {0xdf54e8?, 0x2b82a645b920?}, 0x58?, 0x2b82bcd6d598)
+	/home/hendel/go/pkg/mod/golang.org/x/tools@v0.29.0/go/ssa/builder.go:606 +0x3a5 fp=0x2b82bcd6d260 sp=0x2b82bcd6d1a0 pc=0x81bf05
+golang.org/x/tools/go/ssa.(*builder).compLit(0x2b82c7ea8b10, 0x2b82aefcc200, {0xdf7c10, 0x2b82d4092a20}, 0x2b82aac34d00, 0x1, 0x2b82bcd6d598)
+	/home/hendel/go/pkg/mod/golang.org/x/tools@v0.29.0/go/ssa/builder.go:1304 +0x1252 fp=0x2b82bcd6d498 sp=0x2b82bcd6d260 pc=0x821d92
+golang.org/x/tools/go/ssa.(*builder).addr(0x2b82c7ea8b10, 0x2b82aefcc200, {0xdf54b8?, 0x2b82aac34d00}, 0x1)
+	/home/hendel/go/pkg/mod/golang.org/x/tools@v0.29.0/go/ssa/builder.go:453 +0xc7b fp=0x2b82bcd6d638 sp=0x2b82bcd6d498 pc=0x81b91b
+golang.org/x/tools/go/ssa.(*builder).expr0(0x2b82c7ea8b10, 0x2b82aefcc200, {0xdf55d8?, 0x2b82a6a1d1c0}, {0x7, {0xdf35c8, 0x2b82a7fd7730}, {0x0, 0x0}})
+	/home/hendel/go/pkg/mod/golang.org/x/tools@v0.29.0/go/ssa/builder.go:723 +0xce fp=0x2b82bcd6d950 sp=0x2b82bcd6d638 pc=0x81c44e
+golang.org/x/tools/go/ssa.(*builder).expr(0x2b82c7ea8b10, 0x2b82aefcc200, {0xdf55d8, 0x2b82a6a1d1c0})
+	/home/hendel/go/pkg/mod/golang.org/x/tools@v0.29.0/go/ssa/builder.go:633 +0x13b fp=0x2b82bcd6d9e0 sp=0x2b82bcd6d950 pc=0x81c29b
+[stack truncated]

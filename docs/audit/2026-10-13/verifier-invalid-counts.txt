@@ -1,0 +1,27 @@
+wallet 01a1346c-5880-73fd-b17e-19f1355e53c4 OK
+[
+  {
+    "wallet": "01a1346c-5880-73fd-b17e-19f1355e53c4",
+    "storedBalanceCents": 2000,
+    "computedBalanceCents": 2000,
+    "ledgerRows": 2,
+    "processedCounts": {
+      "BET": 1,
+      "OPENING": 1
+    },
+    "rejectionCounts": {
+      "BET": 1
+    },
+    "pendingReferenceCount": 0,
+    "outboxEventCount": 5,
+    "checks": {
+      "ledger_chain_arithmetic": true,
+      "ledger_chain_continuity": true,
+      "ledger_first_entry_starts_at_zero": true,
+      "ledger_last_entry_reaches_stored_balance": true,
+      "ledger_no_negative_balances": true,
+      "ledger_sum_matches_stored_balance": true,
+      "pending_reference_count": true
+    }
+  }
+]

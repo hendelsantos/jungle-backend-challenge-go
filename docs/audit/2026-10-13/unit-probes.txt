@@ -1,0 +1,13 @@
+=== RUN   TestAuditRetryWalletClockAhead
+    audit_repro_test.go:39: CONFIRMED: processed=0 err=resume pending reference: wallet timestamps must be nonzero and ordered, wallet clock only 1 microsecond ahead
+--- PASS: TestAuditRetryWalletClockAhead (0.00s)
+PASS
+ok  	github.com/hendelsantos/jungle-backend-challenge-go/internal/application/command	0.003s
+=== RUN   TestAuditInvalidVerifierInput
+    audit_repro_test.go:4: input="92233720368547758.08" cents=-9223372036854775808 err=<nil>
+    audit_repro_test.go:4: input="1.-1" cents=99 err=<nil>
+    audit_repro_test.go:4: input="-0.01" cents=1 err=<nil>
+    audit_repro_test.go:5: invalid counts accepted as: map[string]int64{}
+--- PASS: TestAuditInvalidVerifierInput (0.00s)
+PASS
+ok  	github.com/hendelsantos/jungle-backend-challenge-go/cmd/verifywallet	0.002s

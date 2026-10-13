@@ -1,0 +1,41 @@
+Observed process exit status: 0
+Command: GATEWAY_URL=http://localhost:19080 KEYCLOAK_URL=http://localhost:19090 IDEMPOTENCY_REQUESTS=2 IDEMPOTENCY_AMOUNT=1.00 k6 run tests/load/scenarios/idempotency.js
+  █ TOTAL RESULTS
+
+    checks_total.......: 9      5.010309/s
+    checks_succeeded...: 88.88% 8 out of 9
+    checks_failed......: 11.11% 1 out of 9
+
+    ✓ no technical errors under identity race
+    ✓ every answer reports PROCESSED
+    ✓ transaction identifier present
+    ✗ idempotency final balance is 50.00
+      ↳  0% — ✓ 0 / ✗ 1
+    ✓ ledger: opening credit + one debit = 2 rows
+    ✓ reconciliation consistent
+
+    CUSTOM
+    financial_technical_error_rate...: 0.00%  0 out of 0
+
+    HTTP
+    http_req_duration................: avg=27.29ms min=1.22ms  med=14.63ms max=184.55ms p(90)=24.24ms p(95)=104.39ms
+      { endpoint:process-wager }.....: avg=12.74ms min=10.61ms med=12.74ms max=14.86ms  p(90)=14.44ms p(95)=14.65ms
+      { expected_response:true }.....: avg=27.29ms min=1.22ms  med=14.63ms max=184.55ms p(90)=24.24ms p(95)=104.39ms
+    http_req_failed..................: 0.00%  0 out of 11
+    http_reqs........................: 11     6.12371/s
+
+    EXECUTION
+    iteration_duration...............: avg=1.52s   min=1.52s   med=1.52s   max=1.53s    p(90)=1.52s   p(95)=1.52s
+    iterations.......................: 2      1.113402/s
+    vus..............................: 2      min=2       max=2
+    vus_max..........................: 2      min=2       max=2
+
+    NETWORK
+    data_received....................: 8.4 kB 4.7 kB/s
+    data_sent........................: 8.3 kB 4.6 kB/s
+
+
+
+
+running (0m01.8s), 0/2 VUs, 2 complete and 0 interrupted iterations
+idempotency ✓ [ 100% ] 2 VUs  0m01.5s/1m0s  2/2 iters, 1 per VU

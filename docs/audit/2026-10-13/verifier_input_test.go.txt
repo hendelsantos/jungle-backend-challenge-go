@@ -1,0 +1,6 @@
+package main
+import "testing"
+func TestAuditInvalidVerifierInput(t *testing.T) {
+ for _,s:=range []string{"92233720368547758.08","1.-1","-0.01"} { v,e:=parseMoneyCents(s); t.Logf("input=%q cents=%d err=%v",s,v,e); if e!=nil {t.Fatal("expected reproduction of accepted invalid input")}}
+ t.Logf("invalid counts accepted as: %#v",parseCounts("BET=oops"))
+}

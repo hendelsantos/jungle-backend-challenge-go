@@ -4,9 +4,11 @@ Fonte normativa: [README original preservado](reference/README_DESAFIO.md), comm
 `bdd9e70b65db9b374ee070bd3a4768661a888997`; [procedência](reference/SOURCE.md).
 Revisão final de 13/10/2026 sobre a implementação completa (Fases 0–6; ver histórico das revisões anteriores abaixo).
 
-**Estado: requisitos obrigatórios demonstrados com evidência real; diferenciais opcionais (partidas dobradas, tracing, dashboards) fora do escopo do prazo.** A matriz abaixo foi auditada seção por seção contra o código e os testes.
+**Estado após revisão independente: conformidade parcial, com achados abertos.** A [auditoria de 13/10/2026 sobre `e11e325`](AUDITORIA_INDEPENDENTE_2026-10-13.md) registra a matriz atual: autorização do broker (A01), durabilidade local (A02), prova das interrupções (A03), worker de referências (A07) e observabilidade (A09/A11) impedem manter a declaração irrestrita de conclusão. A nova revisão também documenta problemas nos testes e nas instruções. As evidências positivas anteriores continuam úteis, mas não encerram essas pendências.
 
-## Requisitos e evidências
+## Requisitos e evidências da revisão anterior
+
+A tabela abaixo preserva o registro anterior. Para o parecer vigente e as ressalvas por requisito, consultar a matriz da auditoria independente vinculada acima.
 
 “Implementado na camada” descreve código e testes existentes nessa camada. “Parcial”
 significa que falta uma parte do requisito ou sua demonstração no ambiente exigido.

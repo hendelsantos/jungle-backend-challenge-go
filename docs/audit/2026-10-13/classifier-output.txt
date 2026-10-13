@@ -1,0 +1,3 @@
+time="2026-10-13T05:41:18-03:00" level=info msg="VU processed=999 technical=1" source=console
+time="2026-10-13T05:41:18-03:00" level=info msg="teardown processed=0 technical=0" source=console
+    financial_technical_error_rate...: 100.00% 1 out of 1

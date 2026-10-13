@@ -1,5 +1,7 @@
 # Relatório de QA final — Jungle Backend Go
 
+> **Revisão posterior:** a [auditoria independente de 13/10/2026](AUDITORIA_INDEPENDENTE_2026-10-13.md), base `e11e325`, encontrou 13 achados abertos e qualificou o parecer de aprovação abaixo. Este documento é mantido como histórico.
+
 > Auditoria de 13/10/2026 · Commit auditado: `114118e` (matriz) · Branch `main`, sem divergência com `origin/main`
 >
 > **Nota de escopo (13/10/2026).** Após este relatório, a entrega incorporou:

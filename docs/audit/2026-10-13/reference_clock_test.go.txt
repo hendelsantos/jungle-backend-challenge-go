@@ -1,0 +1,40 @@
+package command
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/hendelsantos/jungle-backend-challenge-go/internal/application/ports"
+	"github.com/hendelsantos/jungle-backend-challenge-go/internal/domain/wagering"
+	"github.com/hendelsantos/jungle-backend-challenge-go/internal/domain/wallet"
+)
+
+func TestAuditRetryWalletClockAhead(t *testing.T) {
+	walletID, playerID := uuid.New(), uuid.New()
+	pending := pendingState(walletID, playerID, retryTime)
+	f := newRetryDeps(walletID, playerID, ports.DuePendingReference{State: pending})
+	// The referenced BET arrived and was processed in the meantime.
+	bet, err := wagering.NewExternal(wagering.Request{
+		ID: uuid.New(), WalletID: walletID, PlayerID: playerID, Kind: wagering.Bet,
+		Money: mustMoney("25.00"), ProviderID: "provider-a", ExternalTransactionID: "bet-1",
+		IdempotencyKey: "provider-a:bet-1", PayloadHash: otherHash,
+		RoundID: "round-1", GameID: "fortune-chimp",
+	}, retryTime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	betWallet := walletAt(walletID, playerID, "75.00", retryTime)
+	if err := bet.Process(betWallet, wagering.Reference{}, retryTime); err != nil {
+		t.Fatal(err)
+	}
+	f.lookups.hasReference, f.lookups.reference = true, ports.ResolvedReference{State: bet.Snapshot()}
+
+ f.wallets.locked.UpdatedAt = retryTime.Add(time.Microsecond)
+ processed, err := f.deps().RetryDueReferences(context.Background(), 10)
+ if !errors.Is(err, wallet.ErrInvalidTime) { t.Fatalf("unexpected result: %d %v",processed,err) }
+ t.Logf("CONFIRMED: processed=%d err=%v, wallet clock only 1 microsecond ahead",processed,err)
+}

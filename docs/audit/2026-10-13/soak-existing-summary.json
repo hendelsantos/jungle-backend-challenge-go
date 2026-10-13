@@ -1,0 +1,24 @@
+{
+  "source": "tests/load/results/soak-clean.json (pre-existing local artifact, not a new audit run)",
+  "http_reqs": {
+    "count": 10527,
+    "rate": 25.09611913894301
+  },
+  "elapsed_seconds_inferred_from_count_and_rate": 419.467246777,
+  "checks": {
+    "soak bets always processed (wallets exclusive to VU)": {
+      "name": "soak bets always processed (wallets exclusive to VU)",
+      "path": "::soak bets always processed (wallets exclusive to VU)",
+      "id": "c4257bb0fcd4c033506cff034e50760f",
+      "passes": 10000,
+      "fails": 0
+    },
+    "live reconciliation stays consistent under load": {
+      "path": "::live reconciliation stays consistent under load",
+      "id": "54abed281d7ea659cba88e829ab97724",
+      "passes": 400,
+      "fails": 0,
+      "name": "live reconciliation stays consistent under load"
+    }
+  }
+}

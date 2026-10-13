@@ -1,0 +1,46 @@
+--- FAIL: TestAuthenticatedHTTPAndSQSIntegration (0.11s)
+panic: duplicate metrics collector registration attempted [recovered, repanicked]
+
+goroutine 162 [running]:
+testing.tRunner.func1.2({0x20cf108, 0xc000300ae0})
+	/home/hendel/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.2.linux-amd64/src/testing/testing.go:2125 +0x419
+testing.tRunner.func1()
+	/home/hendel/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.2.linux-amd64/src/testing/testing.go:2128 +0x65f
+panic({0x20cf108?, 0xc000300ae0?})
+	/home/hendel/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.2.linux-amd64/src/runtime/panic.go:859 +0x125
+github.com/prometheus/client_golang/prometheus.(*Registry).MustRegister(...)
+	/home/hendel/go/pkg/mod/github.com/prometheus/client_golang@v1.23.2/prometheus/registry.go:406
+github.com/hendelsantos/jungle-backend-challenge-go/internal/adapters/http.RegisterMetrics(0xc0001ea000, {0x2162fc8, 0xc00060aa30}, 0xc000306950)
+	/home/hendel/Projetos/Jungle-Projeto/internal/adapters/http/outbox_metrics.go:62 +0x44d
+github.com/hendelsantos/jungle-backend-challenge-go/internal/bootstrap.registerOutboxMetrics(0xc0000e5180, 0xc00060aa30, 0xc00025d0a0)
+	/home/hendel/Projetos/Jungle-Projeto/internal/bootstrap/outbox.go:36 +0xd6
+reflect.Value.call({0x1fc0f18?, 0x2169a08?, 0x0?}, {0x153b96f, 0x4}, {0xc0001ced70, 0x3, 0x2167948?})
+	/home/hendel/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.2.linux-amd64/src/reflect/value.go:586 +0x11fd
+reflect.Value.Call({0x1fc0f18?, 0x2169a08?, 0xc000566f08?}, {0xc0001ced70, 0x3, 0x3})
+	/home/hendel/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.2.linux-amd64/src/reflect/value.go:369 +0xb6
+go.uber.org/dig.defaultInvoker({0x1fc0f18?, 0x2169a08?, 0xc0002c1800?}, {0xc0001ced70, 0x3, 0x3})
+	/home/hendel/go/pkg/mod/go.uber.org/dig@v1.19.0/container.go:257 +0x79
+go.uber.org/dig.(*Scope).Invoke(0xc0002b4580, {0x1fc0f18, 0x2169a08}, {0x0, 0x0, 0x4c77ba?})
+	/home/hendel/go/pkg/mod/go.uber.org/dig@v1.19.0/invoke.go:161 +0x8cf
+go.uber.org/fx.runInvoke({0x79467a159c00, 0xc0002b4580}, {{0x1fc0f18, 0x2169a08}, {0xc00013fe00, 0x5, 0x6}})
+	/home/hendel/go/pkg/mod/go.uber.org/fx@v1.24.0/invoke.go:109 +0x244
+go.uber.org/fx.(*module).invoke(0xc00045f860, {{0x1fc0f18, 0x2169a08}, {0xc00013fe00, 0x5, 0x6}})
+	/home/hendel/go/pkg/mod/go.uber.org/fx@v1.24.0/module.go:335 +0x212
+go.uber.org/fx.(*module).invokeAll(0xc00045f860)
+	/home/hendel/go/pkg/mod/go.uber.org/fx@v1.24.0/module.go:321 +0x19e
+go.uber.org/fx.(*module).invokeAll(0xc00045f2b0)
+	/home/hendel/go/pkg/mod/go.uber.org/fx@v1.24.0/module.go:315 +0xb2
+go.uber.org/fx.New({0xc0000cc3c0, 0xc, 0x6?})
+	/home/hendel/go/pkg/mod/go.uber.org/fx@v1.24.0/app.go:507 +0xf09
+github.com/hendelsantos/jungle-backend-challenge-go/internal/bootstrap.New()
+	/home/hendel/Projetos/Jungle-Projeto/internal/bootstrap/modules.go:38 +0xc88
+github.com/hendelsantos/jungle-backend-challenge-go/internal/adapters/http_test.newHTTPFixture(0xc000244fc8)
+	/home/hendel/Projetos/Jungle-Projeto/internal/adapters/http/api_integration_test.go:51 +0x2ef
+github.com/hendelsantos/jungle-backend-challenge-go/internal/adapters/http_test.TestAuthenticatedHTTPAndSQSIntegration(0xc000244fc8)
+	/home/hendel/Projetos/Jungle-Projeto/internal/adapters/http/sqs_integration_test.go:43 +0x3c5
+testing.tRunner(0xc000244fc8, 0x2168bc8)
+	/home/hendel/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.2.linux-amd64/src/testing/testing.go:2195 +0x21d
+created by testing.(*T).Run in goroutine 1
+	/home/hendel/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.2.linux-amd64/src/testing/testing.go:2260 +0xb13
+FAIL	github.com/hendelsantos/jungle-backend-challenge-go/internal/adapters/http	0.460s
+FAIL

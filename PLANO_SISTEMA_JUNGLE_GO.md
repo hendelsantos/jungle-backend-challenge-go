@@ -1248,3 +1248,8 @@ conclusão cruzada HTTP→SQS). Verificações: `gofmt` limpo; `go vet ./...`;
 `go test -race -tags=integration ./...` sem falhas; `make build` e imagens
 reconstruídas. Eliminatórias do §14 conferidas uma a uma contra evidência
 referenciada na matriz de conformidade.
+
+
+## Revisão independente de qualidade — 13/10/2026
+
+Auditoria sobre `e11e325`, solicitada após a evolução da carga/documentação: [parecer e backlog](docs/AUDITORIA_INDEPENDENTE_2026-10-13.md). Nota **80/100**, três achados P1 e dez P2; implementação não alterada nesta etapa. As declarações anteriores de conclusão ficam condicionadas ao fechamento dos achados. Próximo incremento: A01–A02 (autorização e durabilidade do broker), seguido da comprovação controlada de interrupções A03. Demais correções devem seguir a ordem do relatório, uma parte validada e enviada ao GitHub por vez.
