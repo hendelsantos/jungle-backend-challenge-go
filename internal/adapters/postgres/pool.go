@@ -13,8 +13,11 @@ import (
 // Config carries the settings consumed by this adapter. URL accepts both the
 // postgres:// scheme and the keyword/value DSN form; pgxpool.ParseConfig is
 // the validator, so an invalid value fails application startup.
+// Config carries the connection URL; the optional MaxConns overrides the
+// pgxpool per-process default for A/B sizing experiments.
 type Config struct {
-	URL string
+	URL      string
+	MaxConns int
 }
 
 // NewPool parses the configuration and creates the pool without connecting:
@@ -32,6 +35,9 @@ func NewPool(cfg Config) (*pgxpool.Pool, error) {
 	poolConfig.MaxConnLifetime = 30 * time.Minute
 	poolConfig.MaxConnIdleTime = 5 * time.Minute
 	poolConfig.HealthCheckPeriod = time.Minute
+	if cfg.MaxConns > 0 {
+		poolConfig.MaxConns = int32(cfg.MaxConns)
+	}
 	pool, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: create pool: %w", err)

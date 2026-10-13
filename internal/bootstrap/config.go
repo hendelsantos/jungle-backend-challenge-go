@@ -22,6 +22,8 @@ type Config struct {
 	HTTPAddr                string
 	LogLevel                slog.Level
 	DatabaseURL             string
+	OutboxWorkers           int
+	PGPoolMaxConns          int
 	OIDCIssuer              string
 	OIDCAudience            string
 	ReferenceTTL            time.Duration
@@ -86,6 +88,20 @@ func LoadConfig() (Config, error) {
 		if err := (oidcauth.Config{Issuer: cfg.OIDCIssuer, Audience: cfg.OIDCAudience}).Validate(); err != nil {
 			return Config{}, err
 		}
+	}
+	if text := os.Getenv("OUTBOX_WORKERS"); text != "" {
+		n, err := strconv.Atoi(text)
+		if err != nil || n < 1 || n > 16 {
+			return Config{}, fmt.Errorf("OUTBOX_WORKERS must be an integer between 1 and 16: %w", err)
+		}
+		cfg.OutboxWorkers = n
+	}
+	if text := os.Getenv("PG_POOL_MAX_CONNS"); text != "" {
+		n, err := strconv.Atoi(text)
+		if err != nil || n < 1 || n > 100 {
+			return Config{}, fmt.Errorf("PG_POOL_MAX_CONNS must be an integer between 1 and 100: %w", err)
+		}
+		cfg.PGPoolMaxConns = n
 	}
 	cfg.SQSQueuePrefix = os.Getenv("SQS_QUEUE_PREFIX")
 	cfg.SQSEndpointURL = os.Getenv("SQS_ENDPOINT_URL")

@@ -18,7 +18,7 @@ import (
 // with the HTTP boundary; the inbox completion commits with the wager.
 func messagingModule() fx.Option {
 	return fx.Module("messaging",
-		fx.Provide(newSQSClient, newConsumeWagerDeps, newSQSConsumer, postgres.NewOutboxDeliveryRepository, newOutboxMetrics, newOutboxWorker),
+		fx.Provide(newSQSClient, newConsumeWagerDeps, newSQSConsumer, postgres.NewOutboxDeliveryRepository, newOutboxMetrics, newOutboxWorkerCount, newOutboxWorker),
 		fx.Invoke(registerSQSConsumer, registerOutboxWorker, registerOutboxMetrics),
 	)
 }

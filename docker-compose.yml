@@ -81,6 +81,10 @@ services:
         condition: service_healthy
     environment:
       HTTP_ADDR: ":8080"
+      # Optional per-replica pool sizing for A/B experiments; empty keeps the
+      # pgxpool per-process default.
+      PG_POOL_MAX_CONNS: ${JUNGLE_DELIVERY_PG_POOL_MAX_CONNS:-24}
+      OUTBOX_WORKERS: ${JUNGLE_DELIVERY_OUTBOX_WORKERS:-3}
       LOG_LEVEL: info
       DATABASE_URL: postgres://jungle:jungle-local@postgres:5432/jungle?sslmode=disable
       OIDC_ISSUER: http://keycloak:8080/realms/jungle

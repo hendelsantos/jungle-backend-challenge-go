@@ -44,7 +44,7 @@ func registerReadiness(d readinessDeps) {
 // newPostgresConfig keeps the dependency direction: bootstrap knows the
 // adapter config type, the adapter never imports bootstrap.
 func newPostgresConfig(cfg Config) postgres.Config {
-	return postgres.Config{URL: cfg.DatabaseURL}
+	return postgres.Config{URL: cfg.DatabaseURL, MaxConns: cfg.PGPoolMaxConns}
 }
 
 func registerDatabase(lifecycle fx.Lifecycle, pool *pgxpool.Pool, uow *postgres.UnitOfWork, logger *slog.Logger) {
