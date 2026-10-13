@@ -29,10 +29,10 @@
 
 - Throughput financeiro não depende do pool nos níveis testados; o ganho de 24 conns é
   p99 (~10%) e saibação de esperas (4–5× menor) — sem custo relevante (72 conns totais < 100).
-- Márcio maior que 24 Hongoteve: o Postgres entrou saturado (p99 3,5 s) — o limite real
-  é o servidor, não o pool.
+- Pools maiores que 24 foram rejeitados: o Postgres entrou em saturação (p99 3,5 s) —
+  o limite real é o servidor, não o pool.
 - Publisher com 3 workers/réplica drena 4× em 12s (the "média-pausa" produtiva);
   as garantias at-least-once: claim exclusivo `FOR UPDATE SKIP LOCKED`, lease/token
   por evento, ack condicional; sem transação SQL aberta durante o I/O SQS; crash
   recuperado por failpoint (mesmo `eventId` republicado).
-- Env-exercitação reversível: Portugal override青蛙 rpio do enviro.
+- Reversível: qualquer valor volta ao env por override, sem código novo.
