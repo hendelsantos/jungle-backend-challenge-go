@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -44,10 +45,18 @@ type poolCollector struct {
 	acqMs    *prometheus.Desc
 }
 
-var outboxGaugesOnce sync.Once
+var (
+	outboxGaugesOnce sync.Once
+	// poolGaugesSource holds the pool provider of the last mounted app, so a
+	// process that mounts Fx apps repeatedly (tests) never re-registers the
+	// same metric names and every scrape reads the live pool reference.
+	poolGaugesSource atomic.Pointer[PoolStatsProvider]
+)
 
 // RegisterMetrics exposes the shared Prometheus registry at GET /metrics.
-// No financial data or high-cardinality labels appear on the output.
+// Registration is idempotent: collectors enter the registry once and later
+// mounts just retarget the pool provider. No financial data or
+// high-cardinality labels appear on the output.
 func RegisterMetrics(mux *http.ServeMux, store ports.OutboxDeliveryRepository, pool PoolStatsProvider) {
 	outboxGaugesOnce.Do(func() {
 		observability.Prometheus.MustRegister(outboxStatsCollector{
@@ -57,19 +66,24 @@ func RegisterMetrics(mux *http.ServeMux, store ports.OutboxDeliveryRepository, p
 			oldestAge: prometheus.NewDesc("jungle_outbox_oldest_age_seconds",
 				"Age of the oldest unpublished outbox event.", nil, nil),
 		})
+		observability.Prometheus.MustRegister(poolCollector{
+			provider: func() PoolGauges {
+				if source := poolGaugesSource.Load(); source != nil {
+					return (*source)()
+				}
+				return PoolGauges{}
+			},
+			total: prometheus.NewDesc("jungle_pgpool_total_conns",
+				"PostgreSQL connections pooled by the running application.", nil, nil),
+			idle: prometheus.NewDesc("jungle_pgpool_idle_conns",
+				"Idle pooled connections right now.", nil, nil),
+			acquired: prometheus.NewDesc("jungle_pgpool_acquired_conns",
+				"Currently acquired pooled connections.", nil, nil),
+			acqMs: prometheus.NewDesc("jungle_pgpool_acquire_duration_ms",
+				"Mean wait for an acquired connection.", nil, nil),
+		})
 	})
-	// The pool collector is instance-specific; every replica registers its own.
-	observability.Prometheus.MustRegister(poolCollector{
-		provider: pool,
-		total: prometheus.NewDesc("jungle_pgpool_total_conns",
-			"PostgreSQL connections pooled by this process.", nil, nil),
-		idle: prometheus.NewDesc("jungle_pgpool_idle_conns",
-			"Idle pooled connections right now.", nil, nil),
-		acquired: prometheus.NewDesc("jungle_pgpool_acquired_conns",
-			"Currently acquired pooled connections.", nil, nil),
-		acqMs: prometheus.NewDesc("jungle_pgpool_acquire_duration_ms",
-			"Mean wait for an acquired connection.", nil, nil),
-	})
+	poolGaugesSource.Store(&pool)
 	mux.Handle("GET /metrics", promhttp.HandlerFor(observability.Prometheus, promhttp.HandlerOpts{}))
 }
 
