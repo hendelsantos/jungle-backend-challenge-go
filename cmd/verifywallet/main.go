@@ -41,7 +41,8 @@ type report struct {
 }
 
 // parseMoneyCents converts a decimal string ("10", "10.0", "10.00") into
-// cents using integer arithmetic only.
+// cents using integer arithmetic only. Signs are rejected: the oracle takes
+// absolute amounts, and overflow is checked before the multiplication.
 func parseMoneyCents(text string) (int64, error) {
 	if text == "" {
 		return 0, errors.New("empty amount")
@@ -52,6 +53,16 @@ func parseMoneyCents(text string) (int64, error) {
 	}
 	if intPart == "" || len(fracPart) > 2 {
 		return 0, fmt.Errorf("invalid amount %q", text)
+	}
+	if strings.ContainsAny(intPart, "+-") || strings.ContainsAny(fracPart, "+-") {
+		return 0, fmt.Errorf("invalid amount %q: sign characters are not accepted", text)
+	}
+	for _, part := range []string{intPart, fracPart} {
+		for _, r := range part {
+			if r < '0' || r > '9' {
+				return 0, fmt.Errorf("invalid amount %q: non-digit %q", text, r)
+			}
+		}
 	}
 	for len(fracPart) < 2 {
 		fracPart += "0"
@@ -64,25 +75,36 @@ func parseMoneyCents(text string) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("invalid fraction in %q: %w", text, err)
 	}
-	if units < 0 || units > 9223372036854775807/100 {
-		return 0, fmt.Errorf("amount out of range %q", text)
+	const maxInt64 = int64(9223372036854775807)
+	if units > (maxInt64-cents)/100 {
+		return 0, fmt.Errorf("amount overflows int64: %q", text)
 	}
 	return units*100 + cents, nil
 }
 
-// parseCounts converts "BET=33,OPENING=1" into the expected map.
-func parseCounts(text string) map[string]int64 {
+// parseCounts converts "BET=33,OPENING=1" into the expected map, failing on
+// malformed parts so an audit oracle never silently drops an expectation.
+func parseCounts(text string) (map[string]int64, error) {
 	out := map[string]int64{}
 	for _, part := range strings.Split(text, ",") {
-		name, value, found := strings.Cut(part, "=")
-		if !found {
+		if strings.TrimSpace(part) == "" {
 			continue
 		}
-		if n, err := strconv.ParseInt(value, 10, 64); err == nil {
-			out[strings.TrimSpace(name)] = n
+		name, value, found := strings.Cut(part, "=")
+		name = strings.TrimSpace(name)
+		if !found || name == "" || strings.ContainsAny(value, "+- ") {
+			return nil, fmt.Errorf("invalid counts entry %q", part)
 		}
+		n, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid counts entry %q: %w", part, err)
+		}
+		if _, duplicate := out[name]; duplicate {
+			return nil, fmt.Errorf("duplicate counts entry %q", name)
+		}
+		out[name] = n
 	}
-	return out
+	return out, nil
 }
 
 func main() {
@@ -131,6 +153,16 @@ func run(args []string) int {
 		fmt.Fprintf(os.Stderr, "-events-min: %v\n", err)
 		return 2
 	}
+	wantProcessed, err := parseCounts(*processedWant)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "-counts: %v\n", err)
+		return 2
+	}
+	wantRejected, err := parseCounts(*rejectedWant)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "-rejections: %v\n", err)
+		return 2
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -145,7 +177,7 @@ func run(args []string) int {
 	reports := make([]report, 0, len(wallets))
 	for _, wallet := range wallets {
 		r, issues := audit(ctx, conn, wallet, wantFinal, wantRows, rowsSet,
-			parseCounts(*processedWant), parseCounts(*rejectedWant), wantPending, wantEventsMin)
+			wantProcessed, wantRejected, wantPending, wantEventsMin)
 		reports = append(reports, r)
 		if len(issues) > 0 {
 			failed = true
