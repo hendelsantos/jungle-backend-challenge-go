@@ -111,6 +111,25 @@ jungle-delivery-api-1|2|3`). As chaves SQS, segredos do Keycloak e credenciais
 do banco são exclusivos de desenvolvimento — nunca publicar o ambiente. Para
 zerar, `docker compose -f docker-compose.yml down -v`.
 
+## Testes de carga com k6
+
+A suíte de performance em `tests/load/` mede o ambiente de entrega com três
+réplicas reais e fecha cada cenário com verificação financeira **independente**
+(SQL somente leitura via `cmd/verifywallet`, publicado em `127.0.0.1:59532`).
+Pré-requisitos e execução em [`tests/load/README.md`](tests/load/README.md);
+resultados reais, tabelas p50/p95/p99 e análise de gargalos em
+[docs/PERFORMANCE_REPORT.md](docs/PERFORMANCE_REPORT.md):
+
+```sh
+cd tests/load
+k6 run scenarios/smoke.js          # saneamento: aborta se o ambiente não estiver saudável
+k6 run scenarios/ramp-up.js        # 10→25→50→100 VUs com carteiras exclusivas por VU
+k6 run scenarios/contention.js     # 50 BETs de 30.00 em burst → 33/17, saldo 10.00 auditável
+k6 run scenarios/idempotency.js    # 50 idênticas → 1 débito, 49 replays
+k6 run scenarios/multiwallet.js    # ciclo BET/WIN/LOSS/REFUND/ROLLBACK por carteira
+k6 run scenarios/soak.js           # 15 min com reconciliação periódica ao vivo
+```
+
 ## Falhas literais (Testes E/F/H)
 
 O `scripts/fault.sh` executa três drills contra o ambiente de entrega já ativo,

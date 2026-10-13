@@ -6,6 +6,10 @@ name: jungle-delivery
 services:
   postgres:
     image: postgres:17-alpine
+    # Loopback publication lets the independent verifier (cmd/verifywallet)
+    # audit cents with read-only SQL; nothing else touches the database.
+    ports:
+      - "127.0.0.1:${JUNGLE_DELIVERY_PG_PORT:-59532}:5432"
     environment:
       POSTGRES_USER: jungle
       POSTGRES_PASSWORD: jungle-local
