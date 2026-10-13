@@ -149,7 +149,7 @@ A [ADR 0001](docs/adr/0001-compensacao-direta.md) define uma única compensaçã
 
 **JSON da outbox:** `Envelope.MarshalJSON` define agora o contrato do payload persistido em `outbox_events`: chaves `eventId`, `eventType`, `aggregateId`, `correlationId`, `causationId` (omitido quando ausente), `occurredAt` em RFC 3339 UTC, `version` e `data`, com dinheiro em string decimal via `Money.MarshalJSON`. Marshal valida o envelope e rejeita o valor zero. Não há `UnmarshalJSON`: o caminho de escrita é a outbox e a desserialização pertence aos consumidores.
 
-**Limites desta etapa:** eventos são construídos em memória pelo futuro caso de uso; a gravação na `outbox_events` no mesmo commit SQL, o publisher com lease/backoff e a publicação somente após commit continuam pendentes. Os testes unitários cobrem construtores, kinds por evento, invariante de saldo em `WalletBalanceChanged`, envelope inconsistente e contrato JSON; cobertura de instruções: 100,0% em `ledger` e 95,0% em `events` (restam marcadores de interface e ramos internos de defesa). Nada aqui substitui os testes de integração com PostgreSQL real.
+**Limites desta etapa (registro da Fase 1; implementados nas seções da Fase 2/5 abaixo):** eventos eram construídos em memória; a gravação na `outbox_events` no mesmo commit SQL, o publisher com lease/backoff e a publicação somente após commit vieram com os incrementos posteriores. Os testes unitários cobrem construtores, kinds por evento, invariante de saldo em `WalletBalanceChanged`, envelope inconsistente e contrato JSON; cobertura de instruções: 100,0% em `ledger` e 95,0% em `events` (restam marcadores de interface e ramos internos de defesa). Nada aqui substitui os testes de integração com PostgreSQL real.
 
 ## Persistência — schema PostgreSQL (Fase 2, primeiro incremento)
 
@@ -252,7 +252,7 @@ No futuro consumidor SQS, a UnitOfWork externa da inbox será dona do commit e d
 
 **Evidências reais (`api_integration_test.go`, tag `integration`).** O fixture sobe a aplicação Fx completa contra PostgreSQL e Keycloak reais (sem `TEST_OIDC_ISSUER` a suíte pula) e obtém tokens por `client_credentials`. Verificado: tokens ausente/malformado/assinatura alterada/audience errada → `401`; sem role e serviço interno em aposta → `403`; provedor B em identidade/rota/consulta/replay/conflito do provedor A → `403`/`404` sem efeitos financeiros (saldo, transações, ledger e outbox conferidos no banco); as cinco operações com replay histórico (saldo original preservado após WIN), LOSS sem ledger, REFUND+ROLLBACK, pendência `202` consultável; `409` nos dois conflitos de identidade; rejeição `422` com `INSUFFICIENT_FUNDS` e replay da rejeição; oito contratos inválidos → `400` sem efeitos; token expirado do IdP real (cliente com vida de 3s) → `401`; duas apostas de 80 sobre 100 concorrentes → uma `200`, uma `422`, saldo 20.00 e efeitos exatos no banco; readiness público → `200` com `postgres: ok`.
 
-**Limites desta etapa.** Na conclusão da Fase 3 faltavam worker de referências e SQS, implementados nas seções seguintes. Publisher da outbox, métricas e a demonstração com três processos continuam pendentes; a concorrência HTTP é intra-processo (goroutines) com banco real. `GET /wagering/transactions/:id` exposto apenas ao provedor do registro; acesso interno autorizado a essa consulta, se necessário, será acrescentado com permissão explícita documentada.
+**Limites desta etapa (registro histórico da Fase 3).** Na conclusão da Fase 3 faltavam worker de referências e SQS, implementados nas seções seguintes; o publisher da outbox, as métricas obrigatórias e a demonstração com três processos também vieram depois (Fases 5–6). A concorrência HTTP naquela etapa era intra-processo (goroutines) com banco real. `GET /wagering/transactions/:id` exposto apenas ao provedor do registro; acesso interno autorizado a essa consulta, se necessário, será acrescentado com permissão explícita documentada.
 
 ## Worker de referências pendentes — Fase 4
 
@@ -274,7 +274,7 @@ No futuro consumidor SQS, a UnitOfWork externa da inbox será dona do commit e d
 
 ## Trabalho ainda pendente
 
-- Diferenciais opcionais do enunciado (partidas dobradas, tracing OpenTelemetry, dashboards e testes de carga formais no formato do §14) — explicitamente fora do escopo do prazo, registrados nas limitações.
+- Diferenciais opcionais do enunciado (partidas dobradas, tracing OpenTelemetry, dashboards) — explicitamente fora do escopo do prazo. A suíte de carga com k6 foi entregue (`tests/load/`, `docs/PERFORMANCE_REPORT.md`).
 
 As seções anteriores registram a evolução por incremento; as garantias atuais do processamento estão descritas acima. Os requisitos obrigatórios estão comprovados com evidência real; a lista consolidada está em `docs/CONFORMIDADE_DESAFIO.md` e `docs/QA_RELATORIO_FINAL.md`.
 
@@ -341,7 +341,7 @@ como métrica inválida na saída, nunca como zero velho.
 não permitir cardinalidade explosiva — identidade de jogador/carteira/provedor
 nunca vira rótulo; o correlationId permanece só nos logs JSON.
 
-As seções anteriores registram a evolução por incremento; as garantias atuais do processamento estão descritas acima. Os requisitos obrigatórios têm evidência real; os diferenciais opcionais (tracing, dashboards, partidas dobradas) permanecem fora do escopo do prazo.
+As seções anteriores registram a evolução por incremento; as garantias atuais do processamento estão descritas acima. Os requisitos obrigatórios têm evidência real; a suíte de carga k6 está em `tests/load/` com resultados em `docs/PERFORMANCE_REPORT.md`; os diferenciais opcionais (tracing, dashboards, partidas dobradas) permanecem fora do escopo do prazo.
 
 
 ## Compose de entrega e três processos — Fase 6, incremento 2
@@ -381,8 +381,8 @@ Logs por container mostram a distribuição (21/18/13 requisições nas réplica
 
 **Evidências.** `down -v` + `up --build` a partir de limpo, réplicas healthy em
 ~1min, smoke aprovado, `/metrics` acessível pelo gateway e encerramento com
-remoção de volumes/redes. Limites: kill literal de containers nos pontos
-críticos e a suíte de integração de falhas continuam pendentes (Fase 6).
+remoção de volumes/redes. Os kills literais nos pontos críticos foram
+exercitados no incremento 4 (`scripts/fault.sh`, seção seguinte).
 
 
 ## Runner de migrations — Fase 6, incremento 1

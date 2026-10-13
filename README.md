@@ -1,10 +1,10 @@
 # Jungle Backend Go
 
-Solução em desenvolvimento para o [desafio de processamento distribuído de apostas](https://github.com/junglegaming/backend-challenge-go).
+Solução do [desafio de processamento distribuído de apostas](https://github.com/junglegaming/backend-challenge-go) da Jungle Gaming: backend financeiro distribuído em Go com integridade demonstrável.
 
-**Estado: Fases 0–5 implementadas; Fase 6 com Compose de entrega (três réplicas + gateway) e smoke verificados.** `ProcessWager` trata BET, WIN, LOSS, REFUND e ROLLBACK com lock por carteira, idempotência persistente e gravação de saldo, transação, ledger e outbox no mesmo commit. Os contratos HTTP oficiais estão expostos com autenticação OIDC (`client_credentials`), isolamento entre provedores e operações internas restritas; `GET /health/ready` verifica PostgreSQL e, quando configurado, SQS. Operações com referência ausente ficam `PENDING_REFERENCE` e um worker distribuído as retoma com backoff exponencial e TTL, concluindo, reagendando ou rejeitando com `REFERENCE_NOT_FOUND`. Eventos comprometidos são publicados pós-commit na fila de eventos por um publisher com claim/lease, backoff e republicação com mesmo `eventId`.
+**Estado: Fases 0–6 implementadas e auditadas; requisitos obrigatórios com evidência real.** `ProcessWager` trata BET, WIN, LOSS, REFUND e ROLLBACK com lock por carteira, idempotência persistente e gravação de saldo, transação, ledger e outbox no mesmo commit. Os contratos HTTP oficiais estão expostos com autenticação OIDC (`client_credentials`), isolamento entre provedores e operações internas restritas; `GET /health/ready` verifica PostgreSQL e, quando configurado, SQS. Operações com referência ausente ficam `PENDING_REFERENCE` e um worker distribuído as retoma com backoff exponencial e TTL, concluindo, reagendando ou rejeitando com `REFERENCE_NOT_FOUND`. Eventos comprometidos são publicados pós-commit na fila de eventos por um publisher com claim/lease, backoff e republicação com mesmo `eventId`.
 
-Kills literais, reinício com pendências e mensagem SQS assinada são reproduzíveis com `scripts/fault.sh` (Testes E/F/H). Falta a revisão final de entrega. `GET /metrics` (via gateway) expõe o registro Prometheus: operações por kind/status, replays idempotentes, conflitos, histograma de duração, retries de transação, reentregas, DLQ, divergências de reconciliação e pendência/atraso da outbox (com três réplicas cada scrape reflete o processo atingido; consolidação exige agregação externa). O acompanhamento está em [PLANO_SISTEMA_JUNGLE_GO.md](PLANO_SISTEMA_JUNGLE_GO.md). Prazo interno: **14/10/2026**.
+Kills literais, reinício com pendências e mensagem SQS assinada são reproduzíveis com `scripts/fault.sh` (Testes E/F/H); a revisão final de entrega está registrada em [`docs/QA_RELATORIO_FINAL.md`](docs/QA_RELATORIO_FINAL.md) (GO). `GET /metrics` (via gateway) expõe o registro Prometheus: operações por kind/status, replays idempotentes, conflitos, histograma de duração, retries de transação, reentregas, DLQ, divergências de reconciliação e pendência/atraso da outbox (com três réplicas cada scrape reflete o processo atingido; consolidação exige agregação externa). O acompanhamento está em [PLANO_SISTEMA_JUNGLE_GO.md](PLANO_SISTEMA_JUNGLE_GO.md). Prazo interno: **14/10/2026**.
 
 A [matriz de conformidade](docs/CONFORMIDADE_DESAFIO.md) relaciona as exigências oficiais à implementação, aos testes e às pendências. O README oficial prevalece sobre o plano interno; a entrega só estará concluída com os requisitos obrigatórios demonstrados no ambiente exigido.
 
@@ -315,9 +315,17 @@ internal/domain/ledger/           lançamento imutável do ledger e testes
 internal/domain/events/          eventos tipados de domínio e testes
 internal/testsupport/             harness de integração (build tag integration)
 migrations/                       schema versionado up/down (golang-migrate)
-deployments/                      realm Keycloak de desenvolvimento
+deployments/                      realm Keycloak de desenvolvimento e gateway
 compose.dev.yaml                  dependências locais (PostgreSQL + Keycloak + LocalStack)
-docs/adr/                         decisões de arquitetura
+tests/load/                       suíte k6 com verificação financeira independente
+docs/adr/                         decisões de arquitetura (ADR 0001/0002)
+docs/CONFORMIDADE_DESAFIO.md      matriz requisito → implementação → evidência
+docs/QA_RELATORIO_FINAL.md        auditoria de QA e ciclos (veredito GO)
+docs/PERFORMANCE_REPORT.md        resultados reais dos testes de carga k6
+docs/ENGINEERING_EXCELLENCE_REPORT.md  relatório executivo com A/B
+docs/ARCHITECTURE_DIAGRAMS.md     diagramas Mermaid dos fluxos reais
+docs/RUNBOOK.md                   operação e resposta a falhas
+docs/SECURITY_REVIEW.md           revisão de segurança e ameaças
 docs/reference/                   snapshot do enunciado e procedência
 references/                       clone local do desafio (ignorado pelo Git)
 ```
@@ -358,9 +366,11 @@ make run
 O startup provisiona automaticamente `wager-transactions.fifo`,
 `wager-transactions-dlq.fifo` e `wager-events.fifo`, corrigindo redrive e
 visibilidade em filas existentes. Não exige conta AWS nem token LocalStack.
-O Compose atual sobe as dependências; filas são provisionadas pela aplicação.
-O Compose final com aplicação e migrations automáticas ainda está pendente.
-Se a porta estiver ocupada, use `JUNGLE_SQS_PORT=14566` no Compose e ajuste
+O Compose de desenvolvimento (`compose.dev.yaml`) sobe as dependências de
+teste; o Compose de entrega (`docker-compose.yml`) já inclui a aplicação em
+três réplicas, gateway nginx, migrations automáticas pelo job `migrate`
+(Keycloak e PostgreSQL e LocalStack reais). Se a porta estiver ocupada, use
+`JUNGLE_SQS_PORT=14566` no Compose e ajuste
 `SQS_ENDPOINT_URL`/`TEST_SQS_ENDPOINT` para `http://localhost:14566`.
 
 Salve o envelope oficial em `/tmp/wager.json`, usando carteira e jogador criados
@@ -446,8 +456,10 @@ As suítes usam filas exclusivas e só excluem filas que criam; não fazem purge
 filas de desenvolvimento. Verificam HTTP+SQS com IdP real, redelivery, rollback
 por erro SQL na inbox, commit confirmado com resposta perdida, rejeição terminal,
 conflitos, autenticação, DLQ por três tentativas, readiness e shutdown com rollback.
-Injeção de falhas na fronteira do commit **não equivale a matar/reiniciar processos**.
-Interrupções literais e três processos continuam pendentes (Fase 6).
+Injeção de falhas na fronteira do commit **não equivale a matar/reiniciar processos**:
+os kills literais de processos são exercitados por [`scripts/fault.sh`](scripts/fault.sh)
+(Testes E/F/H com `docker compose kill -s KILL api` nas três réplicas) e a
+demonstração de paralelismo entre instâncias está em [`scripts/smoke.sh`](scripts/smoke.sh).
 
 ## Outbox publisher — segundo incremento da Fase 5
 
@@ -476,8 +488,9 @@ por teste): entrega com corpo/`MessageDeduplicationId`/`MessageGroupId` corretos
 crash simulado entre envio e confirmação recuperado com o mesmo `eventId`
 (a janela de deduplicação FIFO suprime a repetição); quatro publishers
 concorrentes entregam dois eventos uma única vez cada; lease abandonado
-recuperado sem interferência do token antigo. Kill literal de processo e três
-instâncias seguem pendentes (Fase 6).
+recuperado sem interferência do token antigo. Os kills literais de processo
+e a demonstração com três instâncias estão em `scripts/fault.sh` e
+`scripts/smoke.sh` (Fase 6, incremento 4).
 
 ## Engineering decisions & trade-offs
 

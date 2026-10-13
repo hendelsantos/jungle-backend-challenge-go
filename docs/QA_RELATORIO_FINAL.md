@@ -1,6 +1,16 @@
 # Relatório de QA final — Jungle Backend Go
 
-> Data: 13/10/2026 · Commit auditado: `114118e` · Branch `main`, sem divergência com `origin/main`
+> Auditoria de 13/10/2026 · Commit auditado: `114118e` (matriz) · Branch `main`, sem divergência com `origin/main`
+>
+> **Nota de escopo (13/10/2026).** Após este relatório, a entrega incorporou:
+> suíte de carga k6 (`tests/load/`) com verificador financeiro independente
+> (`cmd/verifywallet`) e relatório real (`docs/PERFORMANCE_REPORT.md`);
+> otimizações com A/B documentado (pool pgx 24 conns, 3 publishers por réplica
+> — ADR 0002); pipeline CI (`.github/workflows/ci.yml`); `docs/RUNBOOK.md`,
+> `docs/SECURITY_REVIEW.md` e diagramas (`docs/ARCHITECTURE_DIAGRAMS.md`).
+> Os resultados históricos deste relatório referem-se ao commit auditado; a
+> regressão pós-mudanças foi re-executada (14/14 `-race` + integração real +
+> smoke + faults).
 > Metodologia: auditoria contra o enunciado oficial (snapshot em `docs/reference/README_DESAFIO.md`),
 > prova por execução real (unitários, integração com PostgreSQL/Keycloak/LocalStack reais,
 > Compose de entrega e reprodução limpa em clone separado) e varredura de segurança no

@@ -630,7 +630,7 @@ Serviços planejados:
 
 **Importante:** para três instâncias, não mapear a mesma porta host de `api` três vezes. Usar gateway ou três serviços/portas distintas. Configurar pool de conexão por réplica sem esgotar `max_connections` do PostgreSQL. Cuidar da diferença entre URL pública do Keycloak (`iss`) e endereços de container na rede Compose.
 
-`.env.example` deverá conter, sem segredos reais: `DATABASE_URL`, `HTTP_ADDR`, `OIDC_ISSUER`, `OIDC_AUDIENCE`, `OIDC_JWKS_URL` (se necessário em desenvolvimento), `SQS_ENDPOINT`, `AWS_REGION`, URLs/nomes das filas, intervalos de polling, retry, TTL, `LOG_LEVEL` e prazo de shutdown.
+`.env.example` deverá conter, sem segredos reais: `DATABASE_URL`, `HTTP_ADDR`, `LOG_LEVEL`, `OIDC_ISSUER`, `OIDC_AUDIENCE`, `REFERENCE_TTL`, `REFERENCE_WORKER_INTERVAL`, `SQS_ENDPOINT_URL`, `SQS_REGION`, `SQS_QUEUE_PREFIX`, `SQS_PROVIDER_KEYS` (nomes conforme `LoadConfig`) e, opcionalmente, `PG_POOL_MAX_CONNS`/`OUTBOX_WORKERS`.
 
 ---
 
@@ -835,7 +835,7 @@ só são encerrados com evidência no nível exigido.
 - [x] Implementar `BET`, `WIN`, `LOSS` e idempotência persistente (caso de uso; HTTP/OIDC ainda pendentes).
 - [x] Implementar `REFUND`, `ROLLBACK` e unicidade de compensações (caso de uso).
 - [x] Armazenar saldo/versão originais para replay.
-- [x] Testar as apostas `80.00+80.00` e 50 chamadas concorrentes no PG real (goroutines; três processos ainda pendentes).
+- [x] Testar as apostas `80.00+80.00` e 50 chamadas concorrentes no PG real (goroutines; três processos demonstrados depois na Fase 6).
 
 **Pronto quando:** HTTP autenticado cumpre operações financeiras sem saldo negativo ou débito duplicado.
 
