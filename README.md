@@ -478,3 +478,16 @@ crash simulado entre envio e confirmação recuperado com o mesmo `eventId`
 concorrentes entregam dois eventos uma única vez cada; lease abandonado
 recuperado sem interferência do token antigo. Kill literal de processo e três
 instâncias seguem pendentes (Fase 6).
+
+## Engineering decisions & trade-offs
+
+- **PostgreSQL como única fonte da verdade.** Memória, SQS FIFO e correlações em HTTP servem o plano de controle; a integridade financeira (identidade, saldo, ledger, ilog/outbox) é garantida por schema (índices únicos, CHECKs, triggers) — isso sobrevive a processos, replicação e reinício.
+- **Locking pessimista por linha.** As carteiras são objetos concorrentes por natureza; `SELECT ... FOR UPDATE` no contexto da mesma transação do débito evita lost updates com ordem simples e previsível — carteiras diferentes travam linhas diferentes e progridem em paralelo.
+- **Idempotência persistente (não em memória).** Dois índices únicos por provedor: `idem-potency_key` e `external_transaction_id`. O vencedor do INSERT processa; os perdedores leem o resultado persistido, inclusive o saldo no momento do resultado (`result_balance_cents`, `result_wallet_version`), inclusive após reinício.
+- **Inbox e outbox no mesmo commit.** Duplicação entre HTTP e SQS é resolvida pela inbox `(consumer, messageId, hash)` commitada junto; a outbox garante "nunca publicar antes do commit" e produz eventos com `eventId` estável.
+- **Entrega at-least-once (idadeamento honesto).** SQS/I O dedup tem janela limitada; o correto é REPUBLICAR o mesmo `eventId` e delegar deduplicação ao consumidor fora da janela FIFO (at-least inclusive). Nada aqui promete "exactly once".
+- **Dimensão de pool (A/B real, 13/10).** Perna limpa 100 VUs: `max(4, ncpu)=12` conns: 344–355 rps, p95 393–404 ms, p99 586–614 ms, espera de aquisição ~44 s média; MaxConns=24: 341 rps (par), p95 389 ms, p99 542–561 ms, espera ~9 s. Mais conns (36/48) **piorou** (saturação do Postgres; 3×36 > 100 con max_connections). Adotado **PG_POOL_MAX_CONNS=24** no Compose de entrega com override por env.
+- **Outbox publishers múltiplos (drain medido).** Backlog isolado de ~27k eventos: 1 worker/réplica drenou em 147,7 ev/s; 3 workers/réplica em **408,7–421,5 ev/s** (2,8×), sem violar leases (`FOR UPDATE SKIP LOCKED`, ack por token, sem transação aberta no I/O). Adotado **OUTBOX_WORKERS=3** no Compose; os tests de leases/falha publicam/ack do editor já cobrem os dois modos.
+- **Gargalos observados (com evidência):** além do pool, o publisher de outbox não acompanha produção extrema (100 VUs geram ~700 ev/s de pico; com 1 worker por réplica o dreno isolado mediu 147,7 ev/s). Com 3 workers por réplica, o dreno medido (408–421 ev/s) passa a acompanhar a produção moderada. Alternativas rejeitadas: cache de saldo em memória (corretude não aceita), verificação check-then-act fora do banco (perde para os índices únicos) e OTel distribuído (diferencial opcional; fora do escopo do prazo).
+- **Próximos passos em produção (fora do escopo do desafio):** alertas contínuos em `jungle_outbox_*` e divergências, dashboards com esses regimes, pool dimensionado por load-test em hardware dedicado, segredos em vault com rotação, revisão de incidentes e runbook ensaiado.
+
