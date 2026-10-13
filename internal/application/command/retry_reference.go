@@ -140,6 +140,14 @@ func (d RetryReferenceDeps) resumeOne(ctx context.Context, ttl time.Duration) (b
 	if err != nil {
 		return false, err
 	}
+	// Lock acquisition may wait behind another writer. Refresh the instant
+	// and preserve the persisted clocks even when this process is behind.
+	if afterLock := d.Now().UTC().Truncate(time.Microsecond); afterLock.After(now) {
+		now = afterLock
+	}
+	if locked.UpdatedAt.After(now) {
+		now = locked.UpdatedAt
+	}
 	w, err := wallet.Rehydrate(locked)
 	if err != nil {
 		return false, fmt.Errorf("rehydrate wallet: %w", err)

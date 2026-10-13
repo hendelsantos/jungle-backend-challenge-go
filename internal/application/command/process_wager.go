@@ -374,6 +374,9 @@ func (d ProcessWagerDeps) validate() error {
 	return nil
 }
 
+// MaxWagerIdentifierBytes bounds UTF-8 bytes, including composite index keys.
+const MaxWagerIdentifierBytes = 512
+
 func validateWagerInput(input ProcessWagerInput) error {
 	if input.Kind == wagering.Opening {
 		return ErrInvalidKind
@@ -388,6 +391,9 @@ func validateWagerInput(input ProcessWagerInput) error {
 		{"roundId", input.RoundID},
 		{"gameId", input.GameID},
 	} {
+		if len(field[1]) > MaxWagerIdentifierBytes {
+			return fmt.Errorf("%w: %s exceeds %d bytes", ErrInvalidInput, field[0], MaxWagerIdentifierBytes)
+		}
 		if strings.TrimSpace(field[1]) == "" || !utf8.ValidString(field[1]) || strings.ContainsRune(field[1], 0) {
 			return fmt.Errorf("%w: %s is required", ErrInvalidInput, field[0])
 		}
@@ -398,7 +404,7 @@ func validateWagerInput(input ProcessWagerInput) error {
 	if input.Money.Currency() != money.BRL {
 		return ErrCurrencyNotAccepted
 	}
-	if !utf8.ValidString(input.ReferenceExternalTransactionID) || strings.ContainsRune(input.ReferenceExternalTransactionID, 0) {
+	if len(input.ReferenceExternalTransactionID) > MaxWagerIdentifierBytes || !utf8.ValidString(input.ReferenceExternalTransactionID) || strings.ContainsRune(input.ReferenceExternalTransactionID, 0) {
 		return ErrInvalidInput
 	}
 	return nil

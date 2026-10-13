@@ -215,6 +215,8 @@ func TestRetryReferenceResolvesArrivedReference(t *testing.T) {
 	walletID, playerID := uuid.New(), uuid.New()
 	pending := pendingState(walletID, playerID, retryTime)
 	f := newRetryDeps(walletID, playerID, ports.DuePendingReference{State: pending})
+	// The wallet changed while the worker waited for its lock.
+	f.wallets.locked.UpdatedAt = retryTime.Add(time.Microsecond)
 	// The referenced BET arrived and was processed in the meantime.
 	bet, err := wagering.NewExternal(wagering.Request{
 		ID: uuid.New(), WalletID: walletID, PlayerID: playerID, Kind: wagering.Bet,
@@ -238,6 +240,9 @@ func TestRetryReferenceResolvesArrivedReference(t *testing.T) {
 	updated := f.wagers.updated[0]
 	if updated.Status != wagering.Processed || !updated.HasResult || updated.Result.Balance.MinorUnits() != 10000 {
 		t.Fatalf("updated = %+v", updated)
+	}
+	if updated.UpdatedAt.Before(f.wallets.locked.UpdatedAt) {
+		t.Fatal("resolution predates the locked wallet")
 	}
 	if updated.ReferenceID != bet.ID() {
 		t.Fatalf("reference id = %v, want %v", updated.ReferenceID, bet.ID())

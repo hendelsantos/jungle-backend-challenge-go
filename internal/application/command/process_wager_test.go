@@ -3,6 +3,7 @@ package command
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -605,5 +606,27 @@ func TestProcessWagerReplayCommittedBetweenIdentityLookups(t *testing.T) {
 	}
 	if len(f.wagers.states)+len(f.ledger.entries)+len(f.outbox.envelopes) != 0 {
 		t.Fatal("replay created effects")
+	}
+}
+
+func TestWagerIdentifierByteLimit(t *testing.T) {
+	setters := []func(*ProcessWagerInput, string){
+		func(i *ProcessWagerInput, s string) { i.ProviderID = s },
+		func(i *ProcessWagerInput, s string) { i.ExternalTransactionID = s },
+		func(i *ProcessWagerInput, s string) { i.IdempotencyKey = s },
+		func(i *ProcessWagerInput, s string) { i.RoundID = s },
+		func(i *ProcessWagerInput, s string) { i.GameID = s },
+		func(i *ProcessWagerInput, s string) { i.ReferenceExternalTransactionID = s },
+	}
+	for _, set := range setters {
+		in := betInput(lockedWalletState(10000), 100)
+		set(&in, strings.Repeat("é", 256))
+		if err := validateWagerInput(in); err != nil {
+			t.Fatalf("512 bytes rejected: %v", err)
+		}
+		set(&in, strings.Repeat("é", 256)+"a")
+		if err := validateWagerInput(in); !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("513 bytes: %v", err)
+		}
 	}
 }
