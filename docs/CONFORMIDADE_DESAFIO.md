@@ -191,3 +191,10 @@ Compose, shell, documentação e sondas k6 aprovados (sonda negativa: exit 99
 esperado); `govulncheck@v1.9.0`: nenhuma vulnerabilidade encontrada. Integração
 com PostgreSQL, Keycloak e LocalStack reais, `-race -count=1`: 606
 casos/subtestes aprovados, zero falhas e zero casos ignorados.
+
+### Revisão atual — 14/10/2026
+
+[A matriz final de entrega](AUDITORIA_FINAL_ENTREGA.md) passa a concentrar o
+estado corrente. A01 permanece parcial: templates IAM revisados contra as
+chamadas, mas não aplicados; runtime usa uma identidade compartilhada para
+provisionamento/consumo/publicação. Controle HMAC não equivale a autorização SQS.

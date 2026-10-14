@@ -25,3 +25,22 @@ func TestProducerSignatureBindsProviderAndExactBody(t *testing.T) {
 		t.Fatal("unsigned producer accepted")
 	}
 }
+
+func TestProducerAuthenticationRejectsUnknownOrMalformedSignature(t *testing.T) {
+	keys := ProviderKeys{"provider-a": "test-signing-key-a-at-least-32-bytes"}
+	for _, signature := range []string{"", "invalid", "00", "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"} {
+		t.Run(signature, func(t *testing.T) {
+			attrs := SignAttributes("provider-a", keys["provider-a"], []byte(validEnvelope))
+			value := attrs["signature"]
+			value.StringValue = aws.String(signature)
+			attrs["signature"] = value
+			if _, err := keys.Authenticate([]byte(validEnvelope), attrs); err == nil {
+				t.Fatal("malformed/forged signature accepted")
+			}
+		})
+	}
+	attrs := SignAttributes("unknown", "test-signing-key-a-at-least-32-bytes", []byte(validEnvelope))
+	if _, err := keys.Authenticate([]byte(validEnvelope), attrs); err == nil {
+		t.Fatal("unknown provider accepted")
+	}
+}

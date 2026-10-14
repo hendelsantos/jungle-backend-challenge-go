@@ -1290,3 +1290,11 @@ Compose, shell, documentação e sondas k6 aprovados (sonda negativa: exit 99
 esperado); `govulncheck@v1.9.0`: nenhuma vulnerabilidade encontrada. Integração
 com PostgreSQL, Keycloak e LocalStack reais, `-race -count=1`: 606
 casos/subtestes aprovados, zero falhas e zero casos ignorados.
+
+### Missão final — diagnóstico A01 (14/10/2026)
+
+HEAD inicial limpo e sincronizado em `6c04217`. Matriz inicial em
+`docs/AUDITORIA_FINAL_ENTREGA.md`. Revisão dos templates IAM corrigiu ações
+faltantes do produtor/admin/readiness; explicitada a ausência de separação
+operacional no runtime. A01 continua parcial: cadeia AWS e HMAC são controles
+efetivos; não substituem autorização do broker. Sem AWS real ou serviços pagos.

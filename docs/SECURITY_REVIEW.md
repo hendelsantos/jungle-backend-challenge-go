@@ -83,3 +83,19 @@ humana registrada e novo lançamento como trilha auditável.
 - [ ] Rotação de segredos de dev ao encerrar o desafio (nenhum em produção).
 - [ ] Avaliar `go-sec%`/`staticcheck` como job adicional da CI (P3).
 - [ ] Assinatura detached das imagens de entrega se for publicar imagens (P3).
+
+## Revisão A01 — 14/10/2026
+
+Os papéis IAM são **templates, não configuração aplicada**. O runtime atual
+combina provisionamento, consumidor, publisher e readiness num único cliente
+AWS. Portanto, atribuir apenas o papel consumidor ao servidor impede seu
+startup; a separação administrativa/publisher exigirá composição e identidades
+próprias antes de produção. Não se afirma menor privilégio operacional.
+
+Revisão das chamadas: `cmd/send-wager` precisa de `GetQueueUrl` além de
+`SendMessage`; publisher/readiness precisa de `GetQueueAttributes`; administrador
+precisa de `GetQueueUrl` e `ListQueues` com `Resource: "*"`. Templates corrigidos
+conforme a [referência IAM do SQS](https://docs.aws.amazon.com/service-authorization/latest/reference/list_sqs.html).
+A resource policy de negação não concede permissões e não é provisionada pelo
+código. Avaliação de políticas no simulador IAM, isoladamente, também não prova
+acesso operacional ao SQS. Testes negativos reais continuam obrigatórios.

@@ -525,3 +525,11 @@ campanhas anteriores. As pausas `JUNGLE_TEST_POST_COMMIT_PAUSE` e
 `JUNGLE_TEST_PUBLISH_ACK_PAUSE` destinam-se aos ensaios de interrupção e ficam
 vazias na operação normal. A conformidade permanece parcial; ver os limites
 registrados em [CONFORMIDADE_DESAFIO.md](docs/CONFORMIDADE_DESAFIO.md).
+
+### Revisão final em andamento — 14/10/2026
+
+A matriz atual está em [AUDITORIA_FINAL_ENTREGA.md](docs/AUDITORIA_FINAL_ENTREGA.md).
+As políticas IAM são templates: o servidor local ainda usa uma única identidade
+para provisionar, consumir e publicar. A separação de papéis e as negações do
+broker não foram comprovadas operacionalmente; HMAC protege a autenticidade do
+pedido financeiro, não impede apagar mensagens no broker.

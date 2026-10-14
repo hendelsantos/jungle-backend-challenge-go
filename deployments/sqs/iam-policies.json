@@ -1,5 +1,5 @@
 {
-  "_comment": "Least-privilege AWS IAM policies for the SQS broker roles, for production deployment. NOT locally verifiable: LocalStack Community does not evaluate IAM (ENFORCE_IAM is a Pro feature, verified empirically on 4.14.0 — unsigned and forged-signature requests are answered 200). Verify in AWS with `aws iam simulate-principal-policy` or in LocalStack Pro. ARNs use the challenge account/region placeholders (000000000000/us-east-1); substitute the real account. The application authenticates to the broker with the AWS credential chain (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, IRSA or instance role); see internal/adapters/sqs/sqs.go.",
+  "_comment": "Least-privilege AWS IAM policies for the SQS broker roles, for production deployment. NOT locally verifiable: LocalStack Community does not evaluate IAM (ENFORCE_IAM is a Pro feature, verified empirically on 4.14.0 \u2014 unsigned and forged-signature requests are answered 200). Verify in AWS with `aws iam simulate-principal-policy` or in LocalStack Pro. ARNs use the challenge account/region placeholders (000000000000/us-east-1); substitute the real account. The application authenticates to the broker with the AWS credential chain (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, IRSA or instance role); see internal/adapters/sqs/sqs.go. Templates only: the current all-in-one application uses one credential chain and provisions at startup. These separate roles are NOT wired into runtime and cannot be assigned individually to the current app. Operational enforcement remains unverified.",
   "roles": {
     "jungle-wager-producer": {
       "comment": "External game providers (or their ingress service) may ONLY send to the intake FIFO. They cannot receive, delete or administer queues.",
@@ -9,13 +9,26 @@
           {
             "Sid": "SendWagersOnly",
             "Effect": "Allow",
-            "Action": ["sqs:SendMessage"],
-            "Resource": ["arn:aws:sqs:us-east-1:000000000000:wager-transactions.fifo"]
+            "Action": [
+              "sqs:SendMessage",
+              "sqs:GetQueueUrl"
+            ],
+            "Resource": [
+              "arn:aws:sqs:us-east-1:000000000000:wager-transactions.fifo"
+            ]
           },
           {
             "Sid": "DenyEverythingElseOnQueues",
             "Effect": "Deny",
-            "Action": ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:ChangeMessageVisibility", "sqs:DeleteQueue", "sqs:CreateQueue", "sqs:SetQueueAttributes", "sqs:PurgeQueue"],
+            "Action": [
+              "sqs:ReceiveMessage",
+              "sqs:DeleteMessage",
+              "sqs:ChangeMessageVisibility",
+              "sqs:DeleteQueue",
+              "sqs:CreateQueue",
+              "sqs:SetQueueAttributes",
+              "sqs:PurgeQueue"
+            ],
             "Resource": "*"
           }
         ]
@@ -29,14 +42,28 @@
           {
             "Sid": "ConsumeIntake",
             "Effect": "Allow",
-            "Action": ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:ChangeMessageVisibility", "sqs:GetQueueAttributes", "sqs:GetQueueUrl"],
-            "Resource": ["arn:aws:sqs:us-east-1:000000000000:wager-transactions.fifo"]
+            "Action": [
+              "sqs:ReceiveMessage",
+              "sqs:DeleteMessage",
+              "sqs:ChangeMessageVisibility",
+              "sqs:GetQueueAttributes",
+              "sqs:GetQueueUrl"
+            ],
+            "Resource": [
+              "arn:aws:sqs:us-east-1:000000000000:wager-transactions.fifo"
+            ]
           },
           {
             "Sid": "DeadLetterCopies",
             "Effect": "Allow",
-            "Action": ["sqs:SendMessage", "sqs:GetQueueAttributes", "sqs:GetQueueUrl"],
-            "Resource": ["arn:aws:sqs:us-east-1:000000000000:wager-transactions-dlq.fifo"]
+            "Action": [
+              "sqs:SendMessage",
+              "sqs:GetQueueAttributes",
+              "sqs:GetQueueUrl"
+            ],
+            "Resource": [
+              "arn:aws:sqs:us-east-1:000000000000:wager-transactions-dlq.fifo"
+            ]
           }
         ]
       }
@@ -49,8 +76,14 @@
           {
             "Sid": "PublishEventsOnly",
             "Effect": "Allow",
-            "Action": ["sqs:SendMessage", "sqs:GetQueueUrl"],
-            "Resource": ["arn:aws:sqs:us-east-1:000000000000:wager-events.fifo"]
+            "Action": [
+              "sqs:SendMessage",
+              "sqs:GetQueueUrl",
+              "sqs:GetQueueAttributes"
+            ],
+            "Resource": [
+              "arn:aws:sqs:us-east-1:000000000000:wager-events.fifo"
+            ]
           }
         ]
       }
@@ -63,8 +96,24 @@
           {
             "Sid": "AdministerChallengeQueues",
             "Effect": "Allow",
-            "Action": ["sqs:CreateQueue", "sqs:DeleteQueue", "sqs:SetQueueAttributes", "sqs:GetQueueAttributes", "sqs:ListQueues", "sqs:TagQueue", "sqs:UntagQueue"],
-            "Resource": ["arn:aws:sqs:us-east-1:000000000000:wager-*"]
+            "Action": [
+              "sqs:CreateQueue",
+              "sqs:DeleteQueue",
+              "sqs:SetQueueAttributes",
+              "sqs:GetQueueAttributes",
+              "sqs:TagQueue",
+              "sqs:UntagQueue",
+              "sqs:GetQueueUrl"
+            ],
+            "Resource": [
+              "arn:aws:sqs:us-east-1:000000000000:wager-*"
+            ]
+          },
+          {
+            "Sid": "ListQueues",
+            "Effect": "Allow",
+            "Action": "sqs:ListQueues",
+            "Resource": "*"
           }
         ]
       }
@@ -80,7 +129,11 @@
           "Effect": "Deny",
           "Principal": "*",
           "Action": "sqs:*",
-          "Resource": ["arn:aws:sqs:us-east-1:000000000000:wager-transactions.fifo", "arn:aws:sqs:us-east-1:000000000000:wager-transactions-dlq.fifo", "arn:aws:sqs:us-east-1:000000000000:wager-events.fifo"],
+          "Resource": [
+            "arn:aws:sqs:us-east-1:000000000000:wager-transactions.fifo",
+            "arn:aws:sqs:us-east-1:000000000000:wager-transactions-dlq.fifo",
+            "arn:aws:sqs:us-east-1:000000000000:wager-events.fifo"
+          ],
           "Condition": {
             "StringNotLike": {
               "aws:PrincipalArn": [

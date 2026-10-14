@@ -569,3 +569,10 @@ financeiro e requer validação específica do lifecycle nos ensaios. O callback
 de métricas de referências ainda é chamado dentro da UnitOfWork e não está
 ligado ao bootstrap: é trabalho em andamento, não garantia de contagem após
 commit. Este checkpoint não encerra A03/A11.
+
+### Limite operacional IAM (14/10/2026)
+
+`ManagedClient` compartilha uma identidade AWS entre provisionamento,
+readiness, consumidor e publisher. Os papéis de `deployments/sqs/iam-policies.json`
+são templates para separação futura, não a topologia de permissões já implantada.
+A01 continua parcial; falta demonstrar negação efetiva pelo broker.
