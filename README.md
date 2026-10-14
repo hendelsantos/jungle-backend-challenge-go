@@ -38,7 +38,9 @@ Encerre com `Ctrl+C` ou `SIGTERM`. O servidor aguarda requisições em andamento
 | `REFERENCE_TTL` | `24h` | Prazo máximo de espera por uma referência ausente; esgotado, a operação é rejeitada com `REFERENCE_NOT_FOUND` |
 | `REFERENCE_WORKER_INTERVAL` | `1s` | Intervalo de polling do worker de referências (ativo quando `DATABASE_URL` está definida) |
 | `SQS_ENDPOINT_URL` | vazia | Endpoint LocalStack, ex.: `http://localhost:4566`; habilita o consumidor e exige banco e chaves de produtores |
-| `SQS_REGION` | `us-east-1` | Região local; SDK usa credenciais fictícias `test`/`test` |
+| `SQS_REGION` | `us-east-1` | Região do broker; credenciais vêm da cadeia padrão do SDK AWS |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | sem fallback | No ambiente local, fornecer explicitamente `test` / `test`; perfis e roles também são resolvidos pelo SDK |
+| `AWS_SESSION_TOKEN` | opcional | Token de credenciais temporárias; deixar vazio no exemplo local `test` / `test` |
 | `SQS_PROVIDER_KEYS` | obrigatória com SQS | Objeto JSON `providerId → chave HMAC` (mínimo 32 bytes por chave) |
 | `SQS_QUEUE_PREFIX` | vazio | Opcional para testes isolados: até 32 letras, dígitos, `_` ou `-`; nomes oficiais por padrão |
 
@@ -238,6 +240,7 @@ A suíte HTTP autenticada (`internal/adapters/http`) adicionalmente exige Keyclo
 docker compose -f compose.dev.yaml up -d
 TEST_OIDC_ISSUER='http://localhost:58080/realms/jungle' \
 TEST_SQS_ENDPOINT=http://localhost:4566 \
+AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_SESSION_TOKEN= \
 TEST_DATABASE_URL='postgres://jungle:jungle-local@127.0.0.1:55432/jungle?sslmode=disable' \
   go test -race -tags=integration ./internal/adapters/http/ -count=1 -v
 ```
@@ -363,6 +366,7 @@ SQS no mesmo processo da API (mantenha `DATABASE_URL`, `OIDC_ISSUER` e
 `OIDC_AUDIENCE` dos exemplos anteriores):
 
 ```sh
+export AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_SESSION_TOKEN=
 export SQS_ENDPOINT_URL=http://localhost:4566
 export SQS_PROVIDER_KEYS='{"provider-a":"local-provider-a-signing-key-32-bytes-minimum","provider-b":"local-provider-b-signing-key-32-bytes-minimum"}'
 make run
@@ -404,6 +408,7 @@ Em outro terminal, o produtor de desenvolvimento assina e envia o corpo sem
 alterá-lo (a variável abaixo contém apenas a chave daquele provedor):
 
 ```sh
+AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_SESSION_TOKEN= \
 SQS_ENDPOINT_URL=http://localhost:4566 \
 SQS_PROVIDER_KEY=local-provider-a-signing-key-32-bytes-minimum \
 go run ./cmd/send-wager -provider provider-a -file /tmp/wager.json
@@ -454,6 +459,7 @@ go vet -tags=integration ./...
 TEST_DATABASE_URL='postgres://jungle:jungle-local@localhost:55432/jungle?sslmode=disable' \
 TEST_OIDC_ISSUER=http://localhost:58080/realms/jungle \
 TEST_SQS_ENDPOINT=http://localhost:4566 \
+AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_SESSION_TOKEN= \
 go test -race -tags=integration ./... -count=1
 ```
 

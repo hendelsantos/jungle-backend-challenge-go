@@ -91,6 +91,9 @@ services:
       OIDC_AUDIENCE: jungle-api
       SQS_ENDPOINT_URL: http://localstack:4566
       SQS_REGION: us-east-1
+      # Explicit fictional credentials for this local broker only.
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
       # Fictional local provider signing keys; never use outside development.
       SQS_PROVIDER_KEYS: '{"provider-a":"local-provider-a-signing-key-32-bytes-minimum","provider-b":"local-provider-b-signing-key-32-bytes-minimum"}'
     healthcheck:

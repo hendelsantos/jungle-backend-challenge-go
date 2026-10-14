@@ -39,6 +39,13 @@ player/wallet/round/valor/moeda verificados). O enunciado requer produtor
 autorizado via credenciais de fila; LocalStack Community não prova IAM —
 limitação de dev documentada.
 
+**Credenciais do cliente (incremento de 13/10/2026).** O adaptador usa a cadeia
+padrão do SDK AWS, sem fallback para `test/test`. O Compose, a CI e os comandos
+locais fornecem o par fictício explicitamente. Testes isolados verificam
+ambiente, perfil compartilhado, role de container, token temporário e falha
+sem envio quando não existe identidade. Isso corrige a escolha da identidade
+no cliente; não aplica políticas no broker nem encerra A01.
+
 ## 4. Procedimentos de resposta
 
 Ver `RUNBOOK.md` (PostgreSQL/Keycloak/LocalStack indisponíveis, outbox

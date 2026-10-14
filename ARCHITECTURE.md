@@ -526,7 +526,15 @@ invisível; processamento/ack limitado a 10s. Falhas transitórias usam
 `ChangeMessageVisibility` com 1s/2s/4s; o broker faz redrive após três recebimentos.
 Sem resposta dessa chamada, a visibilidade original limita a recuperação.
 Provisionamento tem deadline real de 30s; readiness verifica as três filas com
-o deadline da rota. SDK Go v2 usa endpoint explícito e credenciais locais.
+o deadline da rota. SDK Go v2 usa endpoint explícito e a cadeia padrão de
+credenciais, sem substituir perfis ou roles por `test/test`. O Compose e os
+comandos locais fornecem esse par fictício explicitamente por ambiente.
+A resolução de credenciais é lazy: sem identidade disponível, a chamada SQS
+falha antes do envio; o provisionamento propaga a falha no startup.
+Testes do adaptador verificam ambiente, perfil compartilhado, endpoint de
+credenciais de container, token temporário e ausência de credenciais. Esses
+testes não comprovam IAM do broker: A01 permanece aberto até testar negações
+reais por identidade e política. Referência: [cadeia padrão AWS SDK Go v2](https://docs.aws.amazon.com/sdk-for-go/v2/developer-guide/configure-gosdk.html).
 
 **Shutdown.** Fx para HTTP, cancela consumidor/workers e só depois fecha o pool.
 Cancelamento interrompe polling/processamento; SQL não confirmado é revertido.

@@ -120,6 +120,7 @@ cat > /tmp/fault-wager-$runId.json <<EOF
   }
 }
 EOF
+AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_SESSION_TOKEN= \
 SQS_ENDPOINT_URL="$SQS_URL" SQS_PROVIDER_KEY="$PROVIDER_KEY" \
   go run ./cmd/send-wager -provider provider-a -file /tmp/fault-wager-$runId.json >/dev/null \
   || fail "publishing signed wager"
@@ -230,6 +231,7 @@ cat > /tmp/fault-h-bet-$runId.json <<EOF
   }
 }
 EOF
+AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_SESSION_TOKEN= \
 SQS_ENDPOINT_URL="$SQS_URL" SQS_PROVIDER_KEY="$PROVIDER_KEY" \
   go run ./cmd/send-wager -provider provider-a -file /tmp/fault-h-bet-$runId.json >/dev/null \
   || fail "publishing referenced bet"

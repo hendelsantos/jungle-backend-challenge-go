@@ -12,13 +12,12 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 )
 
-// Config covers the local development endpoint and the target region. The
-// static credentials are development-only: this client targets LocalStack.
+// Config covers the broker endpoint and the target region. Credentials are
+// resolved by the SDK's default chain, independently of the endpoint.
 type Config struct {
 	EndpointURL string
 	Region      string
@@ -39,8 +38,9 @@ func (c Config) Validate() error {
 	return nil
 }
 
-// NewClient builds an SQS client pointed at the configured endpoint. The
-// static development credentials require no AWS account or external secrets.
+// NewClient preserves the SDK's default credential chain, including profiles
+// and workload roles. Local development must explicitly provide fictional
+// credentials; a missing identity must never silently become test/test.
 func NewClient(ctx context.Context, config Config) (*sqs.Client, error) {
 	if err := config.Validate(); err != nil {
 		return nil, err
@@ -49,7 +49,6 @@ func NewClient(ctx context.Context, config Config) (*sqs.Client, error) {
 		awsconfig.WithRegion(config.Region),
 		awsconfig.WithHTTPClient(&http.Client{Timeout: 20 * time.Second}),
 		awsconfig.WithRetryMaxAttempts(2),
-		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("test", "test", "")),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("sqs: load aws config: %w", err)

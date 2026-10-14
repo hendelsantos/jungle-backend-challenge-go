@@ -80,6 +80,8 @@ jobs:
           TEST_DATABASE_URL: postgres://jungle:jungle-local@localhost:55432/jungle?sslmode=disable
           TEST_OIDC_ISSUER: http://localhost:58080/realms/jungle
           TEST_SQS_ENDPOINT: http://localhost:4566
+          AWS_ACCESS_KEY_ID: test
+          AWS_SECRET_ACCESS_KEY: test
         run: go test -race -tags=integration ./... -count=1
       - name: teardown dependencies
         if: always()

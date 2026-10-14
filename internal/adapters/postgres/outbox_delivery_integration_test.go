@@ -94,16 +94,25 @@ func TestOutboxDeliveryAbandonedLeaseAndRetryIntegration(t *testing.T) {
 
 	eventID, _ := insertCommittedEvent(t, pool)
 
-	if _, found, err := store.ClaimNext(ctx, "crashed-publisher", 50*time.Millisecond); err != nil || !found {
+	// A generous lease makes the "live lease blocks other claims" assertion
+	// immune to scheduling delays on loaded machines; the expiry below is
+	// then forced deterministically instead of relying on wall-clock sleep.
+	if _, found, err := store.ClaimNext(ctx, "crashed-publisher", 30*time.Second); err != nil || !found {
 		t.Fatalf("claim: found=%v err=%v", found, err)
 	}
-	if _, found, _ := store.ClaimNext(ctx, "other", time.Second); found {
+	if _, found, err := store.ClaimNext(ctx, "other", time.Second); err != nil {
+		t.Fatalf("check live lease: %v", err)
+	} else if found {
 		t.Fatal("claimed an event with a live lease")
 	}
 
-	// The first publisher dies without publishing or acknowledging. Once the
-	// lease expires, the next claim recovers the same committed event.
-	time.Sleep(80 * time.Millisecond)
+	// The first publisher dies without publishing or acknowledging. Force the
+	// lease to expire (the claim predicate leased_until <= clock_timestamp()
+	// is exercised identically, without timing flakiness), then the next
+	// claim must recover the same committed event.
+	if _, err := pool.Exec(ctx, `UPDATE outbox_events SET leased_until = clock_timestamp() - interval '1 millisecond' WHERE event_id = $1`, eventID); err != nil {
+		t.Fatalf("expire lease: %v", err)
+	}
 	recovered, found, err := store.ClaimNext(ctx, "recovery-publisher", 30*time.Second)
 	if err != nil || !found {
 		t.Fatalf("recover claim: found=%v err=%v", found, err)
@@ -129,7 +138,9 @@ func TestOutboxDeliveryAbandonedLeaseAndRetryIntegration(t *testing.T) {
 		t.Fatalf("released=%v lastError=%v", released, lastError)
 	}
 
-	if _, found, _ := store.ClaimNext(ctx, "other", time.Second); found {
+	if _, found, err := store.ClaimNext(ctx, "other", time.Second); err != nil {
+		t.Fatalf("check retry backoff: %v", err)
+	} else if found {
 		t.Fatal("claimed an event whose retry backoff has not elapsed")
 	}
 }

@@ -154,3 +154,23 @@ Nota de fechamento (13/10/2026): a publicação efetiva dos eventos, os publishe
 múltiplos (A/B de workers), as métricas exigidas, a execução com três processos
 reais, as interrupções/reinícios literais (`scripts/fault.sh`) e o Compose de
 entrega reproduzível estão implementados e evidenciados nas seções acima.
+
+### A01 — progresso da configuração de credenciais (13/10/2026)
+
+O cliente deixou de substituir a cadeia AWS por `test/test`. O par fictício
+agora é explícito apenas nos exemplos/ambiente local. Testes do adaptador
+comprovam resolução por ambiente, perfil e endpoint de role de container,
+inclusão do token temporário e nenhum envio SQS quando não há credenciais.
+Esses testes usam servidores HTTP de teste para isolar a seleção da identidade;
+não equivalem à validação IAM em infraestrutura real.
+
+**Não encerra A01 nem A02/A03.** A autorização do broker exige evidência real
+de rejeição de chamadas sem assinatura, com assinatura inválida e de ações
+fora das permissões do produtor. As evidências antigas de conformidade total
+continuam condicionadas à auditoria independente.
+
+Validação deste incremento: vet, testes com `-race`, build e integração real
+completa aprovados (606 casos/subtestes, zero falhas/ignores). A primeira
+execução expôs a precondição de lease de 50 ms; incorporada a correção local
+com expiração controlada no banco e 20 repetições aprovadas.
+[Evidências, comandos e limites](audit/2026-10-13/sqs-credentials.md).

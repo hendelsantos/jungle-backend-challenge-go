@@ -1253,3 +1253,24 @@ referenciada na matriz de conformidade.
 ## Revisão independente de qualidade — 13/10/2026
 
 Auditoria sobre `e11e325`, solicitada após a evolução da carga/documentação: [parecer e backlog](docs/AUDITORIA_INDEPENDENTE_2026-10-13.md). Nota **80/100**, três achados P1 e dez P2; implementação não alterada nesta etapa. As declarações anteriores de conclusão ficam condicionadas ao fechamento dos achados. Próximo incremento: A01–A02 (autorização e durabilidade do broker), seguido da comprovação controlada de interrupções A03. Demais correções devem seguir a ordem do relatório, uma parte validada e enviada ao GitHub por vez.
+
+### A01, incremento 1 — identidade do cliente SQS (13/10/2026)
+
+Removida a imposição de credenciais estáticas no adaptador. A cadeia padrão
+AWS passa a resolver ambiente, perfis e roles; o ambiente local fornece
+`test/test` explicitamente no Compose, na CI e nos comandos documentados.
+Testes de regressão verificam assinatura com ambiente/perfil/role de container,
+preservação do token temporário e falha sem envio quando não há identidade.
+O teste executado contra a versão local anterior reproduziu as três falhas
+(perfil, role de container e ausência de identidade).
+
+**A01 permanece aberto:** resolver a identidade do cliente não comprova
+negação no broker. Próximo incremento: autorização efetiva por identidade/fila
+com testes negativos reais; depois A02 e A03. As alterações locais de carga,
+pausas de interrupção, métricas e scanner ainda são incrementos separados.
+
+Validação deste incremento: vet, testes com `-race`, build e integração real
+completa aprovados (606 casos/subtestes, zero falhas/ignores). A primeira
+execução expôs a precondição de lease de 50 ms; incorporada a correção local
+com expiração controlada no banco e 20 repetições aprovadas.
+[Evidências, comandos e limites](docs/audit/2026-10-13/sqs-credentials.md).
