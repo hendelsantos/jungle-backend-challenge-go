@@ -548,7 +548,7 @@ func TestSQSUnknownCommitResultReplaysIntegration(t *testing.T) {
 }
 
 func TestSQSRejectsUnauthorizedAndInvalidOperationsIntegration(t *testing.T) {
-	for _, scenario := range []string{"missing signature", "forged provider", "invalid amount", "OPENING"} {
+	for _, scenario := range []string{"missing signature", "forged provider", "invalid amount", "OPENING", "long identifier", "multibyte identifier"} {
 		t.Run(scenario, func(t *testing.T) {
 			f := newSQSFixture(t)
 			walletID, playerID := f.openWallet(t)
@@ -562,6 +562,12 @@ func TestSQSRejectsUnauthorizedAndInvalidOperationsIntegration(t *testing.T) {
 			}
 			if scenario == "OPENING" {
 				body = strings.ReplaceAll(body, "BET", "OPENING")
+			}
+			if scenario == "long identifier" {
+				body = strings.ReplaceAll(body, "fortune-chimp", strings.Repeat("a", 12000))
+			}
+			if scenario == "multibyte identifier" {
+				body = strings.ReplaceAll(body, "fortune-chimp", strings.Repeat("é", 257))
 			}
 			attrs := sqsadapter.SignAttributes("provider-a", testSigningKey, []byte(body))
 			if scenario == "missing signature" {

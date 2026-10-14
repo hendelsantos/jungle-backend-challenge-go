@@ -1,0 +1,7 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Exact fictional HMAC fixture, reviewed in metrics_test.go; no service accepts it outside isolated tests."
+regexTarget = "secret"
+regexes = ['''^test-signing-key-a-at-least-32-bytes$''']

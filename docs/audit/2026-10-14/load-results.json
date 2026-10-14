@@ -1,0 +1,3316 @@
+{
+  "smoke": {
+    "wall_seconds": 0.252196132,
+    "k6_metrics": {
+      "data_sent": {
+        "count": 7957,
+        "rate": 137768.77095175677
+      },
+      "http_req_connecting": {
+        "avg": 0.036001099999999994,
+        "min": 0,
+        "med": 0,
+        "max": 0.095837,
+        "p(50)": 0,
+        "p(95)": 0.09531635000000001,
+        "p(99)": 0.09573287000000001
+      },
+      "http_req_failed": {
+        "fails": 10,
+        "passes": 0,
+        "value": 0
+      },
+      "financial_technical_error_rate": {
+        "passes": 0,
+        "fails": 2,
+        "value": 0
+      },
+      "http_reqs": {
+        "count": 10,
+        "rate": 173.14159978855946
+      },
+      "iteration_duration": {
+        "p(99)": 29.171888,
+        "avg": 29.171888,
+        "min": 29.171888,
+        "med": 29.171888,
+        "max": 29.171888,
+        "p(50)": 29.171888,
+        "p(95)": 29.171888
+      },
+      "checks": {
+        "fails": 0,
+        "passes": 6,
+        "thresholds": {
+          "rate==1.0": false
+        },
+        "value": 1
+      },
+      "http_req_tls_handshaking": {
+        "avg": 0,
+        "min": 0,
+        "med": 0,
+        "max": 0,
+        "p(50)": 0,
+        "p(95)": 0,
+        "p(99)": 0
+      },
+      "http_req_duration{expected_response:true}": {
+        "med": 5.1378155,
+        "max": 10.888324,
+        "p(50)": 5.1378155,
+        "p(95)": 10.63031425,
+        "p(99)": 10.83672205,
+        "avg": 5.2357181,
+        "min": 0.975605
+      },
+      "financial_ops_replays": {
+        "rate": 17.314159978855947,
+        "count": 1
+      },
+      "auxiliary_technical_error_rate": {
+        "passes": 0,
+        "fails": 5,
+        "value": 0
+      },
+      "financial_ops_processed": {
+        "count": 1,
+        "rate": 17.314159978855947
+      },
+      "http_req_blocked": {
+        "p(95)": 0.5116071999999994,
+        "p(99)": 0.7449678400000002,
+        "avg": 0.12471719999999997,
+        "min": 0.002408,
+        "med": 0.0057725,
+        "max": 0.803308,
+        "p(50)": 0.0057725
+      },
+      "data_received": {
+        "count": 7158,
+        "rate": 123934.75712865086
+      },
+      "http_req_duration": {
+        "avg": 5.2357181,
+        "min": 0.975605,
+        "med": 5.1378155,
+        "max": 10.888324,
+        "p(50)": 5.1378155,
+        "p(95)": 10.63031425,
+        "p(99)": 10.83672205,
+        "thresholds": {
+          "p(95)<500": false
+        }
+      },
+      "iterations": {
+        "count": 1,
+        "rate": 17.314159978855947
+      },
+      "http_req_waiting": {
+        "p(99)": 10.732756760000001,
+        "avg": 5.139900500000001,
+        "min": 0.906381,
+        "med": 5.0483335,
+        "max": 10.786094,
+        "p(50)": 5.0483335,
+        "p(95)": 10.5194078
+      },
+      "http_req_receiving": {
+        "max": 0.115905,
+        "p(50)": 0.0703785,
+        "p(95)": 0.10930304999999998,
+        "p(99)": 0.11458461,
+        "avg": 0.074942,
+        "min": 0.03689,
+        "med": 0.0703785
+      },
+      "http_req_sending": {
+        "med": 0.0210925,
+        "max": 0.039913,
+        "p(50)": 0.0210925,
+        "p(95)": 0.03590169999999999,
+        "p(99)": 0.03911074,
+        "avg": 0.0208756,
+        "min": 0.00898
+      }
+    },
+    "sql_wallets": [
+      {
+        "wallet": "01a13988-121d-7c3f-a0ff-d7b38d2b1255",
+        "storedBalanceCents": 12500,
+        "computedBalanceCents": 12500,
+        "ledgerRows": 2,
+        "processedCounts": {
+          "BET": 1,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 4,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      }
+    ]
+  },
+  "idempotency": {
+    "wall_seconds": 2.457751741,
+    "k6_metrics": {
+      "http_req_duration": {
+        "p(95)": 614.1807553,
+        "p(99)": 632.0740839,
+        "avg": 155.08549142990657,
+        "min": 1.019944,
+        "med": 51.65335,
+        "max": 635.134102,
+        "p(50)": 51.65335
+      },
+      "http_req_connecting": {
+        "max": 2.018415,
+        "p(50)": 0.086784,
+        "p(95)": 0.4783227999999999,
+        "p(99)": 0.9997958399999988,
+        "avg": 0.1527179158878504,
+        "min": 0,
+        "med": 0.086784
+      },
+      "http_req_sending": {
+        "avg": 0.04495044859813083,
+        "min": 0.007219,
+        "med": 0.035846,
+        "max": 0.295921,
+        "p(50)": 0.035846,
+        "p(95)": 0.1245084,
+        "p(99)": 0.17962598
+      },
+      "data_sent": {
+        "count": 87895,
+        "rate": 39668.91025438929
+      },
+      "vus": {
+        "value": 17,
+        "min": 17,
+        "max": 50
+      },
+      "iterations": {
+        "count": 50,
+        "rate": 22.566078988787353
+      },
+      "http_req_tls_handshaking": {
+        "p(50)": 0,
+        "p(95)": 0,
+        "p(99)": 0,
+        "avg": 0,
+        "min": 0,
+        "med": 0,
+        "max": 0
+      },
+      "http_req_waiting": {
+        "avg": 154.98108083177567,
+        "min": 0.975142,
+        "med": 51.259044,
+        "max": 635.059054,
+        "p(50)": 51.259044,
+        "p(95)": 614.1081591,
+        "p(99)": 632.00365016
+      },
+      "financial_technical_error_rate": {
+        "passes": 0,
+        "fails": 50,
+        "thresholds": {
+          "rate<0.05": false
+        },
+        "value": 0
+      },
+      "http_reqs": {
+        "count": 107,
+        "rate": 48.291409036004936
+      },
+      "checks": {
+        "passes": 153,
+        "fails": 0,
+        "thresholds": {
+          "rate==1.0": false
+        },
+        "value": 1
+      },
+      "http_req_failed": {
+        "passes": 0,
+        "fails": 107,
+        "value": 0
+      },
+      "vus_max": {
+        "value": 50,
+        "min": 50,
+        "max": 50
+      },
+      "http_req_blocked": {
+        "avg": 0.23791867289719634,
+        "min": 0.002001,
+        "med": 0.164645,
+        "max": 2.061807,
+        "p(50)": 0.164645,
+        "p(95)": 0.5597598,
+        "p(99)": 1.033947379999999
+      },
+      "financial_ops_processed": {
+        "count": 1,
+        "rate": 0.45132157977574705
+      },
+      "data_received": {
+        "count": 88926,
+        "rate": 40134.22280313809
+      },
+      "iteration_duration": {
+        "p(99)": 2181.4404033,
+        "avg": 1832.2474600600003,
+        "min": 1595.050821,
+        "med": 1707.06623,
+        "max": 2183.493077,
+        "p(50)": 1707.06623,
+        "p(95)": 2173.4968367
+      },
+      "http_req_duration{expected_response:true}": {
+        "p(99)": 632.0740839,
+        "avg": 155.08549142990657,
+        "min": 1.019944,
+        "med": 51.65335,
+        "max": 635.134102,
+        "p(50)": 51.65335,
+        "p(95)": 614.1807553
+      },
+      "auxiliary_technical_error_rate": {
+        "passes": 0,
+        "fails": 54,
+        "value": 0
+      },
+      "http_req_duration{endpoint:process-wager}": {
+        "max": 635.134102,
+        "p(50)": 168.94106299999999,
+        "p(95)": 625.3527028999999,
+        "p(99)": 633.81868083,
+        "avg": 282.81701314000003,
+        "min": 20.72286,
+        "med": 168.94106299999999,
+        "thresholds": {
+          "p(95)<2000": false
+        }
+      },
+      "financial_ops_replays": {
+        "count": 49,
+        "rate": 22.114757409011606
+      },
+      "http_req_receiving": {
+        "p(95)": 0.10243469999999993,
+        "p(99)": 0.19396042,
+        "avg": 0.05946014953271028,
+        "min": 0.018658,
+        "med": 0.050667,
+        "max": 0.44483,
+        "p(50)": 0.050667
+      }
+    },
+    "sql_wallets": [
+      {
+        "wallet": "01a13988-1340-7ab1-b083-d9d390885f5e",
+        "storedBalanceCents": 5000,
+        "computedBalanceCents": 5000,
+        "ledgerRows": 2,
+        "processedCounts": {
+          "BET": 1,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 4,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_opening": true
+        }
+      }
+    ]
+  },
+  "idempotency-custom": {
+    "wall_seconds": 3.658361652,
+    "k6_metrics": {
+      "http_req_tls_handshaking": {
+        "avg": 0,
+        "min": 0,
+        "med": 0,
+        "max": 0,
+        "p(50)": 0,
+        "p(95)": 0,
+        "p(99)": 0
+      },
+      "auxiliary_technical_error_rate": {
+        "passes": 0,
+        "fails": 6,
+        "value": 0
+      },
+      "http_req_sending": {
+        "p(50)": 0.024319,
+        "p(95)": 0.11068049999999999,
+        "p(99)": 0.12392890000000001,
+        "avg": 0.03752718181818182,
+        "min": 0.006651,
+        "med": 0.024319,
+        "max": 0.127241
+      },
+      "http_req_receiving": {
+        "min": 0.026169,
+        "med": 0.05271,
+        "max": 0.1995,
+        "p(50)": 0.05271,
+        "p(95)": 0.1447145,
+        "p(99)": 0.18854290000000007,
+        "avg": 0.06482163636363636
+      },
+      "data_sent": {
+        "count": 8261,
+        "rate": 2373.9840901701564
+      },
+      "http_req_duration{endpoint:process-wager}": {
+        "p(95)": 1690.9443038,
+        "p(99)": 1752.89051196,
+        "avg": 994.049462,
+        "min": 219.72186,
+        "med": 994.0494620000001,
+        "max": 1768.377064,
+        "p(50)": 994.0494620000001,
+        "thresholds": {
+          "p(95)<2000": false
+        }
+      },
+      "vus": {
+        "min": 1,
+        "max": 2,
+        "value": 1
+      },
+      "http_req_duration": {
+        "min": 0.988139,
+        "med": 5.444724,
+        "max": 1768.377064,
+        "p(50)": 5.444724,
+        "p(95)": 994.0494620000001,
+        "p(99)": 1613.5115436000006,
+        "avg": 201.3726519090909
+      },
+      "http_req_failed": {
+        "passes": 0,
+        "fails": 11,
+        "value": 0
+      },
+      "financial_ops_processed": {
+        "count": 1,
+        "rate": 0.2873724839813771
+      },
+      "checks": {
+        "passes": 9,
+        "fails": 0,
+        "thresholds": {
+          "rate==1.0": false
+        },
+        "value": 1
+      },
+      "iteration_duration": {
+        "min": 1741.756517,
+        "med": 2515.9373815,
+        "max": 3290.118246,
+        "p(50)": 2515.9373815,
+        "p(95)": 3212.7001595499996,
+        "p(99)": 3274.63462871,
+        "avg": 2515.9373815
+      },
+      "http_req_connecting": {
+        "p(95)": 0.3142605,
+        "p(99)": 0.3273393,
+        "avg": 0.10386481818181817,
+        "min": 0,
+        "med": 0.081745,
+        "max": 0.330609,
+        "p(50)": 0.081745
+      },
+      "vus_max": {
+        "value": 2,
+        "min": 2,
+        "max": 2
+      },
+      "iterations": {
+        "count": 2,
+        "rate": 0.5747449679627542
+      },
+      "financial_technical_error_rate": {
+        "fails": 2,
+        "passes": 0,
+        "thresholds": {
+          "rate<0.05": false
+        },
+        "value": 0
+      },
+      "http_req_duration{expected_response:true}": {
+        "max": 1768.377064,
+        "p(50)": 5.444724,
+        "p(95)": 994.0494620000001,
+        "p(99)": 1613.5115436000006,
+        "avg": 201.3726519090909,
+        "min": 0.988139,
+        "med": 5.444724
+      },
+      "data_received": {
+        "count": 8429,
+        "rate": 2422.2626674790276
+      },
+      "http_reqs": {
+        "count": 11,
+        "rate": 3.1610973237951483
+      },
+      "http_req_blocked": {
+        "p(99)": 0.4901147,
+        "avg": 0.16959000000000002,
+        "min": 0.002414,
+        "med": 0.125698,
+        "max": 0.494088,
+        "p(50)": 0.125698,
+        "p(95)": 0.4742215
+      },
+      "http_req_waiting": {
+        "avg": 201.27030309090907,
+        "min": 0.934502,
+        "med": 5.351316,
+        "max": 1768.296179,
+        "p(50)": 5.351316,
+        "p(95)": 993.8973739999999,
+        "p(99)": 1613.4164180000005
+      },
+      "financial_ops_replays": {
+        "count": 1,
+        "rate": 0.2873724839813771
+      }
+    },
+    "sql_wallets": [
+      {
+        "wallet": "01a13988-1d0e-7040-bd9e-00e8d2655aac",
+        "storedBalanceCents": 9900,
+        "computedBalanceCents": 9900,
+        "ledgerRows": 2,
+        "processedCounts": {
+          "BET": 1,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 4,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_opening": true
+        }
+      }
+    ]
+  },
+  "contention": {
+    "wall_seconds": 2.886649296,
+    "k6_metrics": {
+      "http_req_duration": {
+        "med": 43.806633,
+        "max": 632.397071,
+        "p(50)": 43.806633,
+        "p(95)": 595.7105369,
+        "p(99)": 624.2507676,
+        "avg": 211.87220742056078,
+        "min": 0.892029
+      },
+      "http_req_connecting": {
+        "p(95)": 1.5515501999999997,
+        "p(99)": 2.4217373599999985,
+        "avg": 0.45439749532710266,
+        "min": 0,
+        "med": 0.155811,
+        "max": 3.403315,
+        "p(50)": 0.155811
+      },
+      "http_req_duration{expected_response:true}": {
+        "p(50)": 37.236917000000005,
+        "p(95)": 468.41830495,
+        "p(99)": 492.7037309,
+        "avg": 144.28797658888894,
+        "min": 0.892029,
+        "med": 37.236917000000005,
+        "max": 498.126136
+      },
+      "data_received": {
+        "count": 101541,
+        "rate": 43910.37137341132
+      },
+      "iterations": {
+        "count": 50,
+        "rate": 21.621990808349
+      },
+      "http_reqs": {
+        "rate": 46.27106032986686,
+        "count": 107
+      },
+      "vus_max": {
+        "max": 50,
+        "value": 50,
+        "min": 50
+      },
+      "data_sent": {
+        "count": 87778,
+        "rate": 37958.70218350517
+      },
+      "financial_technical_error_rate": {
+        "passes": 0,
+        "fails": 50,
+        "thresholds": {
+          "rate<0.05": false
+        },
+        "value": 0
+      },
+      "http_req_receiving": {
+        "med": 0.052263,
+        "max": 0.340367,
+        "p(50)": 0.052263,
+        "p(95)": 0.08398009999999995,
+        "p(99)": 0.12038049999999993,
+        "avg": 0.055966214953270976,
+        "min": 0.024514
+      },
+      "http_req_failed": {
+        "passes": 17,
+        "fails": 90,
+        "value": 0.1588785046728972
+      },
+      "http_req_duration{endpoint:process-wager}": {
+        "avg": 422.87771422000003,
+        "min": 59.365986,
+        "med": 432.0495545,
+        "max": 632.397071,
+        "p(50)": 432.0495545,
+        "p(95)": 614.80850905,
+        "p(99)": 628.57615047,
+        "thresholds": {
+          "p(95)<900": false,
+          "p(99)<1500": false
+        }
+      },
+      "iteration_duration": {
+        "avg": 1954.0633820599999,
+        "min": 1569.607871,
+        "med": 1962.780632,
+        "max": 2180.032241,
+        "p(50)": 1962.780632,
+        "p(95)": 2163.84855955,
+        "p(99)": 2176.25014562
+      },
+      "auxiliary_technical_error_rate": {
+        "passes": 0,
+        "fails": 54,
+        "value": 0
+      },
+      "vus": {
+        "value": 39,
+        "min": 39,
+        "max": 50
+      },
+      "financial_ops_rejected": {
+        "count": 17,
+        "rate": 7.35147687483866
+      },
+      "checks": {
+        "fails": 0,
+        "passes": 103,
+        "thresholds": {
+          "rate==1.0": false
+        },
+        "value": 1
+      },
+      "http_req_waiting": {
+        "med": 43.680907,
+        "max": 632.321459,
+        "p(50)": 43.680907,
+        "p(95)": 595.6209686,
+        "p(99)": 624.1592694,
+        "avg": 211.5150053738318,
+        "min": 0.848675
+      },
+      "financial_ops_processed": {
+        "count": 33,
+        "rate": 14.27051393351034
+      },
+      "http_req_sending": {
+        "min": 0.006998,
+        "med": 0.038922,
+        "max": 2.817059,
+        "p(50)": 0.038922,
+        "p(95)": 1.522308299999999,
+        "p(99)": 2.4457780000000002,
+        "avg": 0.30123583177570107
+      },
+      "http_req_blocked": {
+        "med": 0.278548,
+        "max": 3.88512,
+        "p(50)": 0.278548,
+        "p(95)": 1.748890899999999,
+        "p(99)": 3.5134737599999997,
+        "avg": 0.5760682523364485,
+        "min": 0.002315
+      },
+      "http_req_tls_handshaking": {
+        "max": 0,
+        "p(50)": 0,
+        "p(95)": 0,
+        "p(99)": 0,
+        "avg": 0,
+        "min": 0,
+        "med": 0
+      }
+    },
+    "sql_wallets": [
+      {
+        "wallet": "01a13988-2d07-7491-9d50-25ed9583c476",
+        "storedBalanceCents": 1000,
+        "computedBalanceCents": 1000,
+        "ledgerRows": 34,
+        "processedCounts": {
+          "BET": 33,
+          "OPENING": 1
+        },
+        "rejectionCounts": {
+          "BET": 17
+        },
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 85,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_opening": true,
+          "rejected_count_bet": true
+        }
+      }
+    ]
+  },
+  "contention-custom": {
+    "wall_seconds": 1.738330107,
+    "k6_metrics": {
+      "http_req_duration{endpoint:process-wager}": {
+        "p(50)": 10.4506155,
+        "p(95)": 13.20023925,
+        "p(99)": 13.44465025,
+        "avg": 10.4506155,
+        "min": 7.395478,
+        "med": 10.4506155,
+        "max": 13.505753,
+        "thresholds": {
+          "p(99)<1500": false,
+          "p(95)<900": false
+        }
+      },
+      "financial_technical_error_rate": {
+        "passes": 0,
+        "fails": 2,
+        "thresholds": {
+          "rate<0.05": false
+        },
+        "value": 0
+      },
+      "data_sent": {
+        "count": 8253,
+        "rate": 5331.881590261045
+      },
+      "http_req_tls_handshaking": {
+        "min": 0,
+        "med": 0,
+        "max": 0,
+        "p(50)": 0,
+        "p(95)": 0,
+        "p(99)": 0,
+        "avg": 0
+      },
+      "checks": {
+        "passes": 7,
+        "fails": 0,
+        "thresholds": {
+          "rate==1.0": false
+        },
+        "value": 1
+      },
+      "vus": {
+        "value": 2,
+        "min": 2,
+        "max": 2
+      },
+      "http_req_connecting": {
+        "p(99)": 0.13300810000000002,
+        "avg": 0.06734772727272727,
+        "min": 0,
+        "med": 0.079822,
+        "max": 0.134824,
+        "p(50)": 0.079822,
+        "p(95)": 0.1257445
+      },
+      "iterations": {
+        "count": 2,
+        "rate": 1.2921074979428195
+      },
+      "http_req_sending": {
+        "p(50)": 0.022375,
+        "p(95)": 0.0379085,
+        "p(99)": 0.041586500000000005,
+        "avg": 0.024234545454545457,
+        "min": 0.01106,
+        "med": 0.022375,
+        "max": 0.042506
+      },
+      "http_req_failed": {
+        "passes": 0,
+        "fails": 11,
+        "value": 0
+      },
+      "data_received": {
+        "count": 8790,
+        "rate": 5678.812453458691
+      },
+      "http_req_waiting": {
+        "avg": 4.971210999999999,
+        "min": 1.020581,
+        "med": 4.862663,
+        "max": 13.425601,
+        "p(50)": 4.862663,
+        "p(95)": 10.3585845,
+        "p(99)": 12.812197700000002
+      },
+      "vus_max": {
+        "value": 2,
+        "min": 2,
+        "max": 2
+      },
+      "financial_ops_processed": {
+        "count": 2,
+        "rate": 1.2921074979428195
+      },
+      "iteration_duration": {
+        "p(50)": 1516.7735280000002,
+        "p(95)": 1519.4995884,
+        "p(99)": 1519.74190488,
+        "avg": 1516.7735280000002,
+        "min": 1513.744572,
+        "med": 1516.7735280000002,
+        "max": 1519.802484
+      },
+      "http_reqs": {
+        "count": 11,
+        "rate": 7.106591238685507
+      },
+      "auxiliary_technical_error_rate": {
+        "passes": 0,
+        "fails": 6,
+        "value": 0
+      },
+      "http_req_duration{expected_response:true}": {
+        "avg": 5.054194818181818,
+        "min": 1.086856,
+        "med": 4.949493,
+        "max": 13.505753,
+        "p(50)": 4.949493,
+        "p(95)": 10.4506155,
+        "p(99)": 12.894725500000003
+      },
+      "http_req_blocked": {
+        "avg": 0.10971309090909091,
+        "min": 0.002432,
+        "med": 0.11757,
+        "max": 0.234003,
+        "p(50)": 0.11757,
+        "p(95)": 0.205716,
+        "p(99)": 0.2283456
+      },
+      "http_req_receiving": {
+        "p(50)": 0.055627,
+        "p(95)": 0.078372,
+        "p(99)": 0.0791232,
+        "avg": 0.058749272727272726,
+        "min": 0.04016,
+        "med": 0.055627,
+        "max": 0.079311
+      },
+      "http_req_duration": {
+        "avg": 5.054194818181818,
+        "min": 1.086856,
+        "med": 4.949493,
+        "max": 13.505753,
+        "p(50)": 4.949493,
+        "p(95)": 10.4506155,
+        "p(99)": 12.894725500000003
+      }
+    },
+    "sql_wallets": [
+      {
+        "wallet": "01a13988-36ef-71df-8882-fde1b1fb48f5",
+        "storedBalanceCents": 9800,
+        "computedBalanceCents": 9800,
+        "ledgerRows": 3,
+        "processedCounts": {
+          "BET": 2,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 6,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_opening": true
+        }
+      }
+    ]
+  },
+  "multiwallet": {
+    "wall_seconds": 0.634070088,
+    "k6_metrics": {
+      "http_reqs": {
+        "count": 378,
+        "rate": 862.5843620342146
+      },
+      "iterations": {
+        "count": 50,
+        "rate": 114.09846058653632
+      },
+      "data_received": {
+        "count": 257082,
+        "rate": 586653.2088901586
+      },
+      "http_req_connecting": {
+        "p(99)": 0.6043247700000012,
+        "avg": 0.029193378306878306,
+        "min": 0,
+        "med": 0,
+        "max": 2.791422,
+        "p(50)": 0,
+        "p(95)": 0.09799884999999997
+      },
+      "http_req_receiving": {
+        "avg": 0.043140968253968265,
+        "min": 0.014731,
+        "med": 0.029502,
+        "max": 0.662349,
+        "p(50)": 0.029502,
+        "p(95)": 0.07467749999999992,
+        "p(99)": 0.5023129400000012
+      },
+      "auxiliary_technical_error_rate": {
+        "passes": 0,
+        "fails": 77,
+        "value": 0
+      },
+      "financial_technical_error_rate": {
+        "passes": 0,
+        "fails": 250,
+        "thresholds": {
+          "rate<0.01": false
+        },
+        "value": 0
+      },
+      "http_req_duration": {
+        "max": 36.593399,
+        "p(50)": 10.953261,
+        "p(95)": 31.73430735,
+        "p(99)": 35.54043273,
+        "avg": 11.67650760846561,
+        "min": 0.410903,
+        "med": 10.953261
+      },
+      "http_req_failed": {
+        "passes": 0,
+        "fails": 378,
+        "value": 0
+      },
+      "http_req_duration{expected_response:true}": {
+        "p(99)": 35.54043273,
+        "avg": 11.67650760846561,
+        "min": 0.410903,
+        "med": 10.953261,
+        "max": 36.593399,
+        "p(50)": 10.953261,
+        "p(95)": 31.73430735
+      },
+      "http_req_sending": {
+        "max": 0.609146,
+        "p(50)": 0.011602999999999999,
+        "p(95)": 0.03970429999999997,
+        "p(99)": 0.07985722000000035,
+        "avg": 0.017289066137566127,
+        "min": 0.005307,
+        "med": 0.011602999999999999
+      },
+      "http_req_duration{endpoint:process-wager}": {
+        "med": 11.8982225,
+        "max": 36.593399,
+        "p(50)": 11.8982225,
+        "p(95)": 32.5276102,
+        "p(99)": 35.80824103,
+        "avg": 15.096174580000003,
+        "min": 6.709278,
+        "thresholds": {
+          "p(95)<500": false
+        }
+      },
+      "data_sent": {
+        "count": 469186,
+        "rate": 1070668.0065750927
+      },
+      "iteration_duration": {
+        "med": 87.403231,
+        "max": 115.712797,
+        "p(50)": 87.403231,
+        "p(95)": 110.68829819999999,
+        "p(99)": 113.83791881999998,
+        "avg": 85.29609234000002,
+        "min": 51.269491
+      },
+      "http_req_blocked": {
+        "max": 3.187614,
+        "p(50)": 0.0028135,
+        "p(95)": 0.19265424999999986,
+        "p(99)": 1.0698300300000045,
+        "avg": 0.052709370370370476,
+        "min": 0.001595,
+        "med": 0.0028135
+      },
+      "financial_ops_processed": {
+        "count": 250,
+        "rate": 570.4923029326816
+      },
+      "http_req_tls_handshaking": {
+        "max": 0,
+        "p(50)": 0,
+        "p(95)": 0,
+        "p(99)": 0,
+        "avg": 0,
+        "min": 0,
+        "med": 0
+      },
+      "checks": {
+        "passes": 175,
+        "fails": 0,
+        "thresholds": {
+          "rate==1.0": false
+        },
+        "value": 1
+      },
+      "http_req_waiting": {
+        "avg": 11.616077574074076,
+        "min": 0.383024,
+        "med": 10.895729,
+        "max": 36.544364,
+        "p(50)": 10.895729,
+        "p(95)": 31.6744644,
+        "p(99)": 35.48402283
+      }
+    },
+    "sql_wallets": [
+      {
+        "wallet": "01a13988-3e07-7bf5-a947-592a357b5068",
+        "storedBalanceCents": 40000,
+        "computedBalanceCents": 40000,
+        "ledgerRows": 9,
+        "processedCounts": {
+          "BET": 2,
+          "LOSS": 2,
+          "OPENING": 1,
+          "REFUND": 2,
+          "ROLLBACK": 2,
+          "WIN": 2
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 20,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_loss": true,
+          "processed_count_opening": true,
+          "processed_count_refund": true,
+          "processed_count_rollback": true,
+          "processed_count_win": true
+        }
+      },
+      {
+        "wallet": "01a13988-3e0d-79f1-896d-a662174afc02",
+        "storedBalanceCents": 40000,
+        "computedBalanceCents": 40000,
+        "ledgerRows": 9,
+        "processedCounts": {
+          "BET": 2,
+          "LOSS": 2,
+          "OPENING": 1,
+          "REFUND": 2,
+          "ROLLBACK": 2,
+          "WIN": 2
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 20,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_loss": true,
+          "processed_count_opening": true,
+          "processed_count_refund": true,
+          "processed_count_rollback": true,
+          "processed_count_win": true
+        }
+      },
+      {
+        "wallet": "01a13988-3e13-7382-814e-f5469c07b145",
+        "storedBalanceCents": 40000,
+        "computedBalanceCents": 40000,
+        "ledgerRows": 9,
+        "processedCounts": {
+          "BET": 2,
+          "LOSS": 2,
+          "OPENING": 1,
+          "REFUND": 2,
+          "ROLLBACK": 2,
+          "WIN": 2
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 20,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_loss": true,
+          "processed_count_opening": true,
+          "processed_count_refund": true,
+          "processed_count_rollback": true,
+          "processed_count_win": true
+        }
+      },
+      {
+        "wallet": "01a13988-3e1a-71b1-8cd1-a58d33f62b32",
+        "storedBalanceCents": 40000,
+        "computedBalanceCents": 40000,
+        "ledgerRows": 9,
+        "processedCounts": {
+          "BET": 2,
+          "LOSS": 2,
+          "OPENING": 1,
+          "REFUND": 2,
+          "ROLLBACK": 2,
+          "WIN": 2
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 20,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_loss": true,
+          "processed_count_opening": true,
+          "processed_count_refund": true,
+          "processed_count_rollback": true,
+          "processed_count_win": true
+        }
+      },
+      {
+        "wallet": "01a13988-3e20-799d-a348-c9a96ab55fc0",
+        "storedBalanceCents": 40000,
+        "computedBalanceCents": 40000,
+        "ledgerRows": 9,
+        "processedCounts": {
+          "BET": 2,
+          "LOSS": 2,
+          "OPENING": 1,
+          "REFUND": 2,
+          "ROLLBACK": 2,
+          "WIN": 2
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 20,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_loss": true,
+          "processed_count_opening": true,
+          "processed_count_refund": true,
+          "processed_count_rollback": true,
+          "processed_count_win": true
+        }
+      },
+      {
+        "wallet": "01a13988-3e26-77cf-8e17-218f8e8bac8d",
+        "storedBalanceCents": 40000,
+        "computedBalanceCents": 40000,
+        "ledgerRows": 9,
+        "processedCounts": {
+          "BET": 2,
+          "LOSS": 2,
+          "OPENING": 1,
+          "REFUND": 2,
+          "ROLLBACK": 2,
+          "WIN": 2
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 20,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_loss": true,
+          "processed_count_opening": true,
+          "processed_count_refund": true,
+          "processed_count_rollback": true,
+          "processed_count_win": true
+        }
+      },
+      {
+        "wallet": "01a13988-3e2b-7eef-9901-59faa768a443",
+        "storedBalanceCents": 40000,
+        "computedBalanceCents": 40000,
+        "ledgerRows": 9,
+        "processedCounts": {
+          "BET": 2,
+          "LOSS": 2,
+          "OPENING": 1,
+          "REFUND": 2,
+          "ROLLBACK": 2,
+          "WIN": 2
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 20,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_loss": true,
+          "processed_count_opening": true,
+          "processed_count_refund": true,
+          "processed_count_rollback": true,
+          "processed_count_win": true
+        }
+      },
+      {
+        "wallet": "01a13988-3e31-73df-b4eb-14934c59895e",
+        "storedBalanceCents": 40000,
+        "computedBalanceCents": 40000,
+        "ledgerRows": 9,
+        "processedCounts": {
+          "BET": 2,
+          "LOSS": 2,
+          "OPENING": 1,
+          "REFUND": 2,
+          "ROLLBACK": 2,
+          "WIN": 2
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 20,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_loss": true,
+          "processed_count_opening": true,
+          "processed_count_refund": true,
+          "processed_count_rollback": true,
+          "processed_count_win": true
+        }
+      },
+      {
+        "wallet": "01a13988-3e36-7a88-a0d5-7b402126c3a6",
+        "storedBalanceCents": 40000,
+        "computedBalanceCents": 40000,
+        "ledgerRows": 9,
+        "processedCounts": {
+          "BET": 2,
+          "LOSS": 2,
+          "OPENING": 1,
+          "REFUND": 2,
+          "ROLLBACK": 2,
+          "WIN": 2
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 20,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_loss": true,
+          "processed_count_opening": true,
+          "processed_count_refund": true,
+          "processed_count_rollback": true,
+          "processed_count_win": true
+        }
+      },
+      {
+        "wallet": "01a13988-3e52-7062-8953-92d0ad2ba4e5",
+        "storedBalanceCents": 40000,
+        "computedBalanceCents": 40000,
+        "ledgerRows": 9,
+        "processedCounts": {
+          "BET": 2,
+          "LOSS": 2,
+          "OPENING": 1,
+          "REFUND": 2,
+          "ROLLBACK": 2,
+          "WIN": 2
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 20,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_loss": true,
+          "processed_count_opening": true,
+          "processed_count_refund": true,
+          "processed_count_rollback": true,
+          "processed_count_win": true
+        }
+      },
+      {
+        "wallet": "01a13988-3e57-7d86-960f-ffa7010ed8dd",
+        "storedBalanceCents": 40000,
+        "computedBalanceCents": 40000,
+        "ledgerRows": 9,
+        "processedCounts": {
+          "BET": 2,
+          "LOSS": 2,
+          "OPENING": 1,
+          "REFUND": 2,
+          "ROLLBACK": 2,
+          "WIN": 2
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 20,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_loss": true,
+          "processed_count_opening": true,
+          "processed_count_refund": true,
+          "processed_count_rollback": true,
+          "processed_count_win": true
+        }
+      },
+      {
+        "wallet": "01a13988-3e5d-7f26-bd88-d2768e64b6fb",
+        "storedBalanceCents": 40000,
+        "computedBalanceCents": 40000,
+        "ledgerRows": 9,
+        "processedCounts": {
+          "BET": 2,
+          "LOSS": 2,
+          "OPENING": 1,
+          "REFUND": 2,
+          "ROLLBACK": 2,
+          "WIN": 2
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 20,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_loss": true,
+          "processed_count_opening": true,
+          "processed_count_refund": true,
+          "processed_count_rollback": true,
+          "processed_count_win": true
+        }
+      },
+      {
+        "wallet": "01a13988-3e64-7955-a207-c98e4ca9d49b",
+        "storedBalanceCents": 40000,
+        "computedBalanceCents": 40000,
+        "ledgerRows": 9,
+        "processedCounts": {
+          "BET": 2,
+          "LOSS": 2,
+          "OPENING": 1,
+          "REFUND": 2,
+          "ROLLBACK": 2,
+          "WIN": 2
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 20,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_loss": true,
+          "processed_count_opening": true,
+          "processed_count_refund": true,
+          "processed_count_rollback": true,
+          "processed_count_win": true
+        }
+      },
+      {
+        "wallet": "01a13988-3e69-7f0c-ad70-2c8bd27e2146",
+        "storedBalanceCents": 40000,
+        "computedBalanceCents": 40000,
+        "ledgerRows": 9,
+        "processedCounts": {
+          "BET": 2,
+          "LOSS": 2,
+          "OPENING": 1,
+          "REFUND": 2,
+          "ROLLBACK": 2,
+          "WIN": 2
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 20,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_loss": true,
+          "processed_count_opening": true,
+          "processed_count_refund": true,
+          "processed_count_rollback": true,
+          "processed_count_win": true
+        }
+      },
+      {
+        "wallet": "01a13988-3e6f-7386-9444-bb0f869b61f5",
+        "storedBalanceCents": 40000,
+        "computedBalanceCents": 40000,
+        "ledgerRows": 9,
+        "processedCounts": {
+          "BET": 2,
+          "LOSS": 2,
+          "OPENING": 1,
+          "REFUND": 2,
+          "ROLLBACK": 2,
+          "WIN": 2
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 20,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_loss": true,
+          "processed_count_opening": true,
+          "processed_count_refund": true,
+          "processed_count_rollback": true,
+          "processed_count_win": true
+        }
+      },
+      {
+        "wallet": "01a13988-3e74-7520-8799-aa21dfada1b6",
+        "storedBalanceCents": 40000,
+        "computedBalanceCents": 40000,
+        "ledgerRows": 9,
+        "processedCounts": {
+          "BET": 2,
+          "LOSS": 2,
+          "OPENING": 1,
+          "REFUND": 2,
+          "ROLLBACK": 2,
+          "WIN": 2
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 20,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_loss": true,
+          "processed_count_opening": true,
+          "processed_count_refund": true,
+          "processed_count_rollback": true,
+          "processed_count_win": true
+        }
+      },
+      {
+        "wallet": "01a13988-3e79-7786-95aa-19a83fa25c00",
+        "storedBalanceCents": 40000,
+        "computedBalanceCents": 40000,
+        "ledgerRows": 9,
+        "processedCounts": {
+          "BET": 2,
+          "LOSS": 2,
+          "OPENING": 1,
+          "REFUND": 2,
+          "ROLLBACK": 2,
+          "WIN": 2
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 20,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_loss": true,
+          "processed_count_opening": true,
+          "processed_count_refund": true,
+          "processed_count_rollback": true,
+          "processed_count_win": true
+        }
+      },
+      {
+        "wallet": "01a13988-3e7e-7b05-b3c5-fc7d7fca639d",
+        "storedBalanceCents": 40000,
+        "computedBalanceCents": 40000,
+        "ledgerRows": 9,
+        "processedCounts": {
+          "BET": 2,
+          "LOSS": 2,
+          "OPENING": 1,
+          "REFUND": 2,
+          "ROLLBACK": 2,
+          "WIN": 2
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 20,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_loss": true,
+          "processed_count_opening": true,
+          "processed_count_refund": true,
+          "processed_count_rollback": true,
+          "processed_count_win": true
+        }
+      },
+      {
+        "wallet": "01a13988-3e84-71c8-9862-b2ff41c28757",
+        "storedBalanceCents": 40000,
+        "computedBalanceCents": 40000,
+        "ledgerRows": 9,
+        "processedCounts": {
+          "BET": 2,
+          "LOSS": 2,
+          "OPENING": 1,
+          "REFUND": 2,
+          "ROLLBACK": 2,
+          "WIN": 2
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 20,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_loss": true,
+          "processed_count_opening": true,
+          "processed_count_refund": true,
+          "processed_count_rollback": true,
+          "processed_count_win": true
+        }
+      },
+      {
+        "wallet": "01a13988-3e89-7463-a33d-6b4afb664eaf",
+        "storedBalanceCents": 40000,
+        "computedBalanceCents": 40000,
+        "ledgerRows": 9,
+        "processedCounts": {
+          "BET": 2,
+          "LOSS": 2,
+          "OPENING": 1,
+          "REFUND": 2,
+          "ROLLBACK": 2,
+          "WIN": 2
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 20,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_loss": true,
+          "processed_count_opening": true,
+          "processed_count_refund": true,
+          "processed_count_rollback": true,
+          "processed_count_win": true
+        }
+      },
+      {
+        "wallet": "01a13988-3e8e-7c17-9fb4-85e53547d9b7",
+        "storedBalanceCents": 40000,
+        "computedBalanceCents": 40000,
+        "ledgerRows": 9,
+        "processedCounts": {
+          "BET": 2,
+          "LOSS": 2,
+          "OPENING": 1,
+          "REFUND": 2,
+          "ROLLBACK": 2,
+          "WIN": 2
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 20,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_loss": true,
+          "processed_count_opening": true,
+          "processed_count_refund": true,
+          "processed_count_rollback": true,
+          "processed_count_win": true
+        }
+      },
+      {
+        "wallet": "01a13988-3e95-747e-b8a8-47214c860222",
+        "storedBalanceCents": 40000,
+        "computedBalanceCents": 40000,
+        "ledgerRows": 9,
+        "processedCounts": {
+          "BET": 2,
+          "LOSS": 2,
+          "OPENING": 1,
+          "REFUND": 2,
+          "ROLLBACK": 2,
+          "WIN": 2
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 20,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_loss": true,
+          "processed_count_opening": true,
+          "processed_count_refund": true,
+          "processed_count_rollback": true,
+          "processed_count_win": true
+        }
+      },
+      {
+        "wallet": "01a13988-3e9a-7ef8-aaf2-e44bbb5b20fe",
+        "storedBalanceCents": 40000,
+        "computedBalanceCents": 40000,
+        "ledgerRows": 9,
+        "processedCounts": {
+          "BET": 2,
+          "LOSS": 2,
+          "OPENING": 1,
+          "REFUND": 2,
+          "ROLLBACK": 2,
+          "WIN": 2
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 20,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_loss": true,
+          "processed_count_opening": true,
+          "processed_count_refund": true,
+          "processed_count_rollback": true,
+          "processed_count_win": true
+        }
+      },
+      {
+        "wallet": "01a13988-3ea0-76f4-8199-caf6a536d1c3",
+        "storedBalanceCents": 40000,
+        "computedBalanceCents": 40000,
+        "ledgerRows": 9,
+        "processedCounts": {
+          "BET": 2,
+          "LOSS": 2,
+          "OPENING": 1,
+          "REFUND": 2,
+          "ROLLBACK": 2,
+          "WIN": 2
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 20,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_loss": true,
+          "processed_count_opening": true,
+          "processed_count_refund": true,
+          "processed_count_rollback": true,
+          "processed_count_win": true
+        }
+      },
+      {
+        "wallet": "01a13988-3ea5-7aea-b768-5ded434b0354",
+        "storedBalanceCents": 40000,
+        "computedBalanceCents": 40000,
+        "ledgerRows": 9,
+        "processedCounts": {
+          "BET": 2,
+          "LOSS": 2,
+          "OPENING": 1,
+          "REFUND": 2,
+          "ROLLBACK": 2,
+          "WIN": 2
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 20,
+        "checks": {
+          "final_balance": true,
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_row_count": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true,
+          "processed_count_bet": true,
+          "processed_count_loss": true,
+          "processed_count_opening": true,
+          "processed_count_refund": true,
+          "processed_count_rollback": true,
+          "processed_count_win": true
+        }
+      }
+    ]
+  },
+  "ramp": {
+    "wall_seconds": 40.489136369,
+    "k6_metrics": {
+      "http_reqs": {
+        "count": 16969,
+        "rate": 421.21042659845807
+      },
+      "http_req_tls_handshaking": {
+        "p(95)": 0,
+        "p(99)": 0,
+        "avg": 0,
+        "min": 0,
+        "med": 0,
+        "max": 0,
+        "p(50)": 0
+      },
+      "financial_ops_processed": {
+        "count": 16917,
+        "rate": 419.9196644920805
+      },
+      "http_req_blocked": {
+        "p(95)": 0.004993599999999999,
+        "p(99)": 0.010431239999999991,
+        "avg": 0.004804509104838225,
+        "min": 0.001546,
+        "med": 0.003351,
+        "max": 1.264683,
+        "p(50)": 0.003351
+      },
+      "data_received": {
+        "count": 6947447,
+        "rate": 172451.94853203947
+      },
+      "http_req_duration": {
+        "avg": 28.67503069685901,
+        "min": 4.862525,
+        "med": 24.299705,
+        "max": 427.985141,
+        "p(50)": 24.299705,
+        "p(95)": 63.46434779999996,
+        "p(99)": 87.91084172
+      },
+      "http_req_waiting": {
+        "avg": 28.604920097648655,
+        "min": 4.814497,
+        "med": 24.244646,
+        "max": 427.94827,
+        "p(50)": 24.244646,
+        "p(95)": 63.39232479999998,
+        "p(99)": 87.86795959999999
+      },
+      "http_req_receiving": {
+        "max": 5.182529,
+        "p(50)": 0.041389,
+        "p(95)": 0.08113299999999998,
+        "p(99)": 0.3147451199999997,
+        "avg": 0.05292943738582126,
+        "min": 0.012052,
+        "med": 0.041389
+      },
+      "http_req_failed": {
+        "passes": 0,
+        "fails": 16969,
+        "value": 0
+      },
+      "vus": {
+        "value": 1,
+        "min": 0,
+        "max": 24
+      },
+      "financial_technical_error_rate": {
+        "passes": 0,
+        "fails": 16917,
+        "thresholds": {
+          "rate<0.01": false
+        },
+        "value": 0
+      },
+      "auxiliary_technical_error_rate": {
+        "passes": 0,
+        "fails": 51,
+        "value": 0
+      },
+      "http_req_duration{endpoint:process-wager}": {
+        "min": 4.862525,
+        "med": 24.380541,
+        "max": 427.985141,
+        "p(50)": 24.380541,
+        "p(95)": 63.5056608,
+        "p(99)": 87.92796064000001,
+        "avg": 28.732478931489066,
+        "thresholds": {
+          "p(95)<500": false,
+          "p(99)<900": false
+        }
+      },
+      "checks": {
+        "passes": 16917,
+        "fails": 0,
+        "thresholds": {
+          "rate==1.0": false
+        },
+        "value": 1
+      },
+      "http_req_sending": {
+        "max": 4.564345,
+        "p(50)": 0.014321,
+        "p(95)": 0.02592359999999999,
+        "p(99)": 0.07704111999999994,
+        "avg": 0.01718116182450351,
+        "min": 0.006162,
+        "med": 0.014321
+      },
+      "iteration_duration": {
+        "p(95)": 63.8245486,
+        "p(99)": 88.24146512000002,
+        "avg": 28.98465676284216,
+        "min": 5.058412,
+        "med": 24.643397,
+        "max": 428.133289,
+        "p(50)": 24.643397
+      },
+      "http_req_duration{expected_response:true}": {
+        "p(50)": 24.299705,
+        "p(95)": 63.46434779999996,
+        "p(99)": 87.91084172,
+        "avg": 28.67503069685901,
+        "min": 4.862525,
+        "med": 24.299705,
+        "max": 427.985141
+      },
+      "http_req_connecting": {
+        "avg": 0.0007589468442453888,
+        "min": 0,
+        "med": 0,
+        "max": 1.195401,
+        "p(50)": 0,
+        "p(95)": 0,
+        "p(99)": 0
+      },
+      "data_sent": {
+        "count": 23277365,
+        "rate": 577798.8591984216
+      },
+      "iterations": {
+        "rate": 419.9196644920805,
+        "count": 16917
+      },
+      "vus_max": {
+        "value": 25,
+        "min": 25,
+        "max": 25
+      }
+    },
+    "sql_wallets": [
+      {
+        "wallet": "01a13988-40e8-7ee2-8495-3981995bc54a",
+        "storedBalanceCents": 9980000,
+        "computedBalanceCents": 9980000,
+        "ledgerRows": 9,
+        "processedCounts": {
+          "BET": 8,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 18,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-4101-7b31-9bcf-d9e077bf20e5",
+        "storedBalanceCents": 9257500,
+        "computedBalanceCents": 9257500,
+        "ledgerRows": 298,
+        "processedCounts": {
+          "BET": 297,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 596,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-4109-7406-8f2a-aa536064bb84",
+        "storedBalanceCents": 8660000,
+        "computedBalanceCents": 8660000,
+        "ledgerRows": 537,
+        "processedCounts": {
+          "BET": 536,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 1074,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-4111-79bb-807d-9d9fddbabb8b",
+        "storedBalanceCents": 7840000,
+        "computedBalanceCents": 7840000,
+        "ledgerRows": 865,
+        "processedCounts": {
+          "BET": 864,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 1730,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-4118-7956-a633-8f0755c5ad66",
+        "storedBalanceCents": 5450000,
+        "computedBalanceCents": 5450000,
+        "ledgerRows": 1821,
+        "processedCounts": {
+          "BET": 1820,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 3642,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-411f-786c-b881-a48293f4a70f",
+        "storedBalanceCents": 8455000,
+        "computedBalanceCents": 8455000,
+        "ledgerRows": 619,
+        "processedCounts": {
+          "BET": 618,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 1238,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-4127-700f-a311-465b54c726bc",
+        "storedBalanceCents": 9002500,
+        "computedBalanceCents": 9002500,
+        "ledgerRows": 400,
+        "processedCounts": {
+          "BET": 399,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 800,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-412f-7294-a4c4-f306f716de14",
+        "storedBalanceCents": 7582500,
+        "computedBalanceCents": 7582500,
+        "ledgerRows": 968,
+        "processedCounts": {
+          "BET": 967,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 1936,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-4137-76f1-8d90-a1fbc8d93584",
+        "storedBalanceCents": 6720000,
+        "computedBalanceCents": 6720000,
+        "ledgerRows": 1313,
+        "processedCounts": {
+          "BET": 1312,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 2626,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-413e-7d33-9a5f-e779b6b4faf2",
+        "storedBalanceCents": 8857500,
+        "computedBalanceCents": 8857500,
+        "ledgerRows": 458,
+        "processedCounts": {
+          "BET": 457,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 916,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-4145-7a00-a190-0da6429c718d",
+        "storedBalanceCents": 5790000,
+        "computedBalanceCents": 5790000,
+        "ledgerRows": 1685,
+        "processedCounts": {
+          "BET": 1684,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 3370,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-414c-7d82-bed5-0194ce56377b",
+        "storedBalanceCents": 6140000,
+        "computedBalanceCents": 6140000,
+        "ledgerRows": 1545,
+        "processedCounts": {
+          "BET": 1544,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 3090,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-4161-79e8-bfca-ddbfb76b88b8",
+        "storedBalanceCents": 6505000,
+        "computedBalanceCents": 6505000,
+        "ledgerRows": 1399,
+        "processedCounts": {
+          "BET": 1398,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 2798,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-416e-752d-9707-b47ffbd9ad82",
+        "storedBalanceCents": 9602500,
+        "computedBalanceCents": 9602500,
+        "ledgerRows": 160,
+        "processedCounts": {
+          "BET": 159,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 320,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-4176-7372-9bdf-00533b416962",
+        "storedBalanceCents": 9490000,
+        "computedBalanceCents": 9490000,
+        "ledgerRows": 205,
+        "processedCounts": {
+          "BET": 204,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 410,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-417c-76f4-8687-77bc7fcdc40f",
+        "storedBalanceCents": 7025000,
+        "computedBalanceCents": 7025000,
+        "ledgerRows": 1191,
+        "processedCounts": {
+          "BET": 1190,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 2382,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-419b-79d6-a95a-c3fd81a61c27",
+        "storedBalanceCents": 7327500,
+        "computedBalanceCents": 7327500,
+        "ledgerRows": 1070,
+        "processedCounts": {
+          "BET": 1069,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 2140,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-41a4-77a3-9597-a2259375dd85",
+        "storedBalanceCents": 8245000,
+        "computedBalanceCents": 8245000,
+        "ledgerRows": 703,
+        "processedCounts": {
+          "BET": 702,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 1406,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-41aa-7e82-ac76-68627a640fd6",
+        "storedBalanceCents": 8072500,
+        "computedBalanceCents": 8072500,
+        "ledgerRows": 772,
+        "processedCounts": {
+          "BET": 771,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 1544,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-41b2-71ef-9977-0a45bd470345",
+        "storedBalanceCents": 9367500,
+        "computedBalanceCents": 9367500,
+        "ledgerRows": 254,
+        "processedCounts": {
+          "BET": 253,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 508,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-41b9-707a-b0dd-45ee32050763",
+        "storedBalanceCents": 9150000,
+        "computedBalanceCents": 9150000,
+        "ledgerRows": 341,
+        "processedCounts": {
+          "BET": 340,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 682,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-41c1-721f-bab9-998767404fb9",
+        "storedBalanceCents": 9762500,
+        "computedBalanceCents": 9762500,
+        "ledgerRows": 96,
+        "processedCounts": {
+          "BET": 95,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 192,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-41c8-7b0b-a0be-ab6379bb7fdd",
+        "storedBalanceCents": 9690000,
+        "computedBalanceCents": 9690000,
+        "ledgerRows": 125,
+        "processedCounts": {
+          "BET": 124,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 250,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-41d0-723f-954e-51476ed822e7",
+        "storedBalanceCents": 9915000,
+        "computedBalanceCents": 9915000,
+        "ledgerRows": 35,
+        "processedCounts": {
+          "BET": 34,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 70,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-41d8-7673-9f4e-7580f1f79f6c",
+        "storedBalanceCents": 9820000,
+        "computedBalanceCents": 9820000,
+        "ledgerRows": 73,
+        "processedCounts": {
+          "BET": 72,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 146,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      }
+    ]
+  },
+  "soak": {
+    "wall_seconds": 61.031054832,
+    "k6_metrics": {
+      "http_req_tls_handshaking": {
+        "p(50)": 0,
+        "p(95)": 0,
+        "p(99)": 0,
+        "avg": 0,
+        "min": 0,
+        "med": 0,
+        "max": 0
+      },
+      "http_req_receiving": {
+        "p(99)": 0.13316874000000004,
+        "avg": 0.05146874124154885,
+        "min": 0.015071,
+        "med": 0.049312,
+        "max": 0.666125,
+        "p(50)": 0.049312,
+        "p(95)": 0.077391
+      },
+      "financial_technical_error_rate": {
+        "passes": 0,
+        "fails": 1475,
+        "thresholds": {
+          "rate<0.01": false
+        },
+        "value": 0
+      },
+      "http_req_duration": {
+        "p(99)": 68.64720260000001,
+        "avg": 22.025787657037505,
+        "min": 0.837466,
+        "med": 20.403062,
+        "max": 142.6043,
+        "p(50)": 20.403062,
+        "p(95)": 35.79298959999998
+      },
+      "data_sent": {
+        "count": 2142177,
+        "rate": 35222.84853001213
+      },
+      "http_req_duration{endpoint:process-wager}": {
+        "p(99)": 71.09836715999994,
+        "avg": 23.04826935593221,
+        "min": 14.562735,
+        "med": 20.777025,
+        "max": 142.6043,
+        "p(50)": 20.777025,
+        "p(95)": 33.63201059999998,
+        "thresholds": {
+          "p(95)<500": false
+        }
+      },
+      "http_req_blocked": {
+        "p(50)": 0.004332,
+        "p(95)": 0.006961199999999997,
+        "p(99)": 0.2994529600000002,
+        "avg": 0.01671635894283956,
+        "min": 0.001927,
+        "med": 0.004332,
+        "max": 2.953874
+      },
+      "http_req_sending": {
+        "p(95)": 0.028969599999999995,
+        "p(99)": 0.08328236,
+        "avg": 0.020536038106945296,
+        "min": 0.006797,
+        "med": 0.01687,
+        "max": 1.512351,
+        "p(50)": 0.01687
+      },
+      "http_req_connecting": {
+        "p(95)": 0,
+        "p(99)": 0.17561240000000042,
+        "avg": 0.010110894898586355,
+        "min": 0,
+        "med": 0,
+        "max": 2.910633,
+        "p(50)": 0
+      },
+      "vus": {
+        "min": 25,
+        "max": 25,
+        "value": 25
+      },
+      "http_req_waiting": {
+        "avg": 21.95378287768901,
+        "min": 0.801035,
+        "med": 20.330801,
+        "max": 142.543623,
+        "p(50)": 20.330801,
+        "p(95)": 35.49754049999994,
+        "p(99)": 68.52242826000001
+      },
+      "http_req_failed": {
+        "passes": 0,
+        "fails": 1627,
+        "value": 0
+      },
+      "data_received": {
+        "count": 711582,
+        "rate": 11700.221318165162
+      },
+      "iteration_duration": {
+        "max": 1205.141185,
+        "p(50)": 1021.792162,
+        "p(95)": 1034.5400711,
+        "p(99)": 1138.1661507599997,
+        "avg": 1025.009396882713,
+        "min": 1014.930986,
+        "med": 1021.792162
+      },
+      "auxiliary_technical_error_rate": {
+        "fails": 76,
+        "passes": 0,
+        "value": 0
+      },
+      "checks": {
+        "passes": 1550,
+        "fails": 0,
+        "thresholds": {
+          "rate==1.0": false
+        },
+        "value": 1
+      },
+      "http_req_duration{expected_response:true}": {
+        "avg": 22.025787657037505,
+        "min": 0.837466,
+        "med": 20.403062,
+        "max": 142.6043,
+        "p(50)": 20.403062,
+        "p(95)": 35.79298959999998,
+        "p(99)": 68.64720260000001
+      },
+      "financial_ops_processed": {
+        "count": 1475,
+        "rate": 24.252758563726477
+      },
+      "vus_max": {
+        "max": 25,
+        "value": 25,
+        "min": 25
+      },
+      "iterations": {
+        "rate": 24.252758563726477,
+        "count": 1475
+      },
+      "http_reqs": {
+        "count": 1627,
+        "rate": 26.752025886903713
+      }
+    },
+    "sql_wallets": [
+      {
+        "wallet": "01a13988-e0a0-70d3-aabf-b2bbcebdbe2d",
+        "storedBalanceCents": 494100,
+        "computedBalanceCents": 494100,
+        "ledgerRows": 60,
+        "processedCounts": {
+          "BET": 59,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 120,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-e0ab-7e58-8386-24ba8dd02322",
+        "storedBalanceCents": 494100,
+        "computedBalanceCents": 494100,
+        "ledgerRows": 60,
+        "processedCounts": {
+          "BET": 59,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 120,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-e0b6-7acf-b75c-ae6ad6a00052",
+        "storedBalanceCents": 494100,
+        "computedBalanceCents": 494100,
+        "ledgerRows": 60,
+        "processedCounts": {
+          "BET": 59,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 120,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-e0be-7c83-ba2a-468fffb1a4e5",
+        "storedBalanceCents": 494100,
+        "computedBalanceCents": 494100,
+        "ledgerRows": 60,
+        "processedCounts": {
+          "BET": 59,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 120,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-e0c6-7038-8582-6f960e84cc55",
+        "storedBalanceCents": 494100,
+        "computedBalanceCents": 494100,
+        "ledgerRows": 60,
+        "processedCounts": {
+          "BET": 59,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 120,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-e0cd-74e7-9587-1467643aa63c",
+        "storedBalanceCents": 494100,
+        "computedBalanceCents": 494100,
+        "ledgerRows": 60,
+        "processedCounts": {
+          "BET": 59,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 120,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-e0d9-7748-a06b-d8128118f882",
+        "storedBalanceCents": 494100,
+        "computedBalanceCents": 494100,
+        "ledgerRows": 60,
+        "processedCounts": {
+          "BET": 59,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 120,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-e0e3-7061-9e1a-e34f11abda36",
+        "storedBalanceCents": 494100,
+        "computedBalanceCents": 494100,
+        "ledgerRows": 60,
+        "processedCounts": {
+          "BET": 59,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 120,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-e0ea-79a2-b49e-477140affb00",
+        "storedBalanceCents": 494100,
+        "computedBalanceCents": 494100,
+        "ledgerRows": 60,
+        "processedCounts": {
+          "BET": 59,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 120,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-e0f2-7241-99b4-8b3234d72042",
+        "storedBalanceCents": 494100,
+        "computedBalanceCents": 494100,
+        "ledgerRows": 60,
+        "processedCounts": {
+          "BET": 59,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 120,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-e0f9-7ce4-941d-97dd28c1b0f3",
+        "storedBalanceCents": 494100,
+        "computedBalanceCents": 494100,
+        "ledgerRows": 60,
+        "processedCounts": {
+          "BET": 59,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 120,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-e101-7204-a7a1-93b4f407d5fb",
+        "storedBalanceCents": 494100,
+        "computedBalanceCents": 494100,
+        "ledgerRows": 60,
+        "processedCounts": {
+          "BET": 59,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 120,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-e10a-73db-b699-bc34f6365a01",
+        "storedBalanceCents": 494100,
+        "computedBalanceCents": 494100,
+        "ledgerRows": 60,
+        "processedCounts": {
+          "BET": 59,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 120,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-e111-7ee1-9463-8d365a3cfcc7",
+        "storedBalanceCents": 494100,
+        "computedBalanceCents": 494100,
+        "ledgerRows": 60,
+        "processedCounts": {
+          "BET": 59,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 120,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-e118-7a4c-8eb6-629c389a2732",
+        "storedBalanceCents": 494100,
+        "computedBalanceCents": 494100,
+        "ledgerRows": 60,
+        "processedCounts": {
+          "BET": 59,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 120,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-e11f-7c93-ac88-5d33f8939dd2",
+        "storedBalanceCents": 494100,
+        "computedBalanceCents": 494100,
+        "ledgerRows": 60,
+        "processedCounts": {
+          "BET": 59,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 120,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-e127-7d5d-b546-661e2fd0e3c9",
+        "storedBalanceCents": 494100,
+        "computedBalanceCents": 494100,
+        "ledgerRows": 60,
+        "processedCounts": {
+          "BET": 59,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 120,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-e12e-7ec9-b3ca-31e2b0afc3af",
+        "storedBalanceCents": 494100,
+        "computedBalanceCents": 494100,
+        "ledgerRows": 60,
+        "processedCounts": {
+          "BET": 59,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 120,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-e134-7bae-af3e-3896ff397941",
+        "storedBalanceCents": 494100,
+        "computedBalanceCents": 494100,
+        "ledgerRows": 60,
+        "processedCounts": {
+          "BET": 59,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 120,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-e13a-7652-9a31-3f74f4bcde58",
+        "storedBalanceCents": 494100,
+        "computedBalanceCents": 494100,
+        "ledgerRows": 60,
+        "processedCounts": {
+          "BET": 59,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 120,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-e13f-7f41-8ab6-400f957fac3e",
+        "storedBalanceCents": 494100,
+        "computedBalanceCents": 494100,
+        "ledgerRows": 60,
+        "processedCounts": {
+          "BET": 59,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 120,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-e145-7cd2-9ed5-46b04a410a22",
+        "storedBalanceCents": 494100,
+        "computedBalanceCents": 494100,
+        "ledgerRows": 60,
+        "processedCounts": {
+          "BET": 59,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 120,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-e14b-74af-a858-14a24675615f",
+        "storedBalanceCents": 494100,
+        "computedBalanceCents": 494100,
+        "ledgerRows": 60,
+        "processedCounts": {
+          "BET": 59,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 120,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-e151-7030-b02d-affff99d09d8",
+        "storedBalanceCents": 494100,
+        "computedBalanceCents": 494100,
+        "ledgerRows": 60,
+        "processedCounts": {
+          "BET": 59,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 120,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      },
+      {
+        "wallet": "01a13988-e157-7a88-ac92-e9ec2b0b33b9",
+        "storedBalanceCents": 494100,
+        "computedBalanceCents": 494100,
+        "ledgerRows": 60,
+        "processedCounts": {
+          "BET": 59,
+          "OPENING": 1
+        },
+        "rejectionCounts": {},
+        "pendingReferenceCount": 0,
+        "outboxEventCount": 120,
+        "checks": {
+          "ledger_chain_arithmetic": true,
+          "ledger_chain_continuity": true,
+          "ledger_first_entry_starts_at_zero": true,
+          "ledger_last_entry_reaches_stored_balance": true,
+          "ledger_no_negative_balances": true,
+          "ledger_sum_matches_stored_balance": true,
+          "pending_reference_count": true
+        }
+      }
+    ]
+  }
+}

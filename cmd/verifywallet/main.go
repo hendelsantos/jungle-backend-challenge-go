@@ -200,6 +200,9 @@ func optionalInt(text string) (int64, bool, error) {
 		return 0, false, nil
 	}
 	n, err := strconv.ParseInt(text, 10, 64)
+	if err == nil && n < 0 {
+		err = fmt.Errorf("count must be nonnegative")
+	}
 	return n, true, err
 }
 
@@ -216,15 +219,20 @@ func audit(ctx context.Context, conn *pgx.Conn, wallet string, wantFinal *int64,
 		}
 	}
 
+	tx, err := conn.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return r, append(issues, fmt.Sprintf("begin audit snapshot: %v", err))
+	}
+	defer tx.Rollback(context.Background())
 	var stored int64
-	if err := conn.QueryRow(ctx,
+	if err := tx.QueryRow(ctx,
 		`SELECT balance_cents FROM wallets WHERE id=$1`, wallet).Scan(&stored); err != nil {
 		return r, append(issues, fmt.Sprintf("read wallet: %v", err))
 	}
 	r.StoredCents = stored
 
 	var computed int64
-	if err := conn.QueryRow(ctx, `SELECT
+	if err := tx.QueryRow(ctx, `SELECT
 		COALESCE(SUM(CASE WHEN direction='CREDIT' THEN amount_cents END),0)
 		- COALESCE(SUM(CASE WHEN direction='DEBIT' THEN amount_cents END),0)
 		FROM wallet_ledger_entries WHERE wallet_id=$1`, wallet).Scan(&computed); err != nil {
@@ -234,7 +242,7 @@ func audit(ctx context.Context, conn *pgx.Conn, wallet string, wantFinal *int64,
 
 	// Walk the ledger in stable order; each step must account exactly and the
 	// chain must end at the stored balance, without a single negative value.
-	ledger, err := conn.Query(ctx, `
+	ledger, err := tx.Query(ctx, `
 		SELECT direction, amount_cents, balance_before_cents, balance_after_cents
 		FROM wallet_ledger_entries
 		WHERE wallet_id=$1
@@ -281,6 +289,9 @@ func audit(ctx context.Context, conn *pgx.Conn, wallet string, wantFinal *int64,
 		count++
 	}
 	ledger.Close()
+	if err := ledger.Err(); err != nil {
+		return r, append(issues, fmt.Sprintf("read ledger: %v", err))
+	}
 	r.LedgerRows = count
 
 	if count > 0 {
@@ -304,7 +315,7 @@ func audit(ctx context.Context, conn *pgx.Conn, wallet string, wantFinal *int64,
 	// Transaction counts by kind and status, including rejections with their
 	// stable failure codes are available on the row itself (failure_code).
 	statusCounts := map[string]int64{}
-	kinds, err := conn.Query(ctx, `SELECT kind, status, count(*)
+	kinds, err := tx.Query(ctx, `SELECT kind, status, count(*)
 		FROM wager_transactions WHERE wallet_id=$1 GROUP BY kind, status`, wallet)
 	if err != nil {
 		return r, append(issues, fmt.Sprintf("count transactions: %v", err))
@@ -325,6 +336,9 @@ func audit(ctx context.Context, conn *pgx.Conn, wallet string, wantFinal *int64,
 		}
 	}
 	kinds.Close()
+	if err := kinds.Err(); err != nil {
+		return r, append(issues, fmt.Sprintf("read counts: %v", err))
+	}
 	r.PendingRefs = statusCounts["PENDING_REFERENCE"]
 
 	for kind, want := range wantProcessed {
@@ -336,13 +350,16 @@ func audit(ctx context.Context, conn *pgx.Conn, wallet string, wantFinal *int64,
 	check("pending_reference_count", r.PendingRefs == wantPending)
 
 	var events int64
-	if err := conn.QueryRow(ctx,
+	if err := tx.QueryRow(ctx,
 		`SELECT count(*) FROM outbox_events WHERE payload_json->'data'->>'walletId'=$1`, wallet).Scan(&events); err != nil {
 		return r, append(issues, fmt.Sprintf("count outbox events: %v", err))
 	}
 	r.OutboxEvents = events
 	if wantEventsMin > 0 {
 		check("outbox_events_minimum", events >= wantEventsMin)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return r, append(issues, fmt.Sprintf("commit audit snapshot: %v", err))
 	}
 	return r, issues
 }

@@ -530,3 +530,10 @@ As políticas IAM são templates: o servidor local ainda usa uma única identida
 para provisionar, consumir e publicar. A separação de papéis e as negações do
 broker não foram comprovadas operacionalmente; HMAC protege a autenticidade do
 pedido financeiro, não impede apagar mensagens no broker.
+
+Regressão automatizada sem skips: `scripts/quality-gates.sh` exige as três
+variáveis `TEST_DATABASE_URL`, `TEST_OIDC_ISSUER` e `TEST_SQS_ENDPOINT` e executa
+os gates com `-race -count=1/2`. A [regressão de carga](tests/load/README.md)
+verifica todas as carteiras por SQL em snapshot. Os probes
+`scripts/broker-probe.py` e `scripts/broker-recovery.py` registram limites reais
+do broker; exit 2 no segundo significa durabilidade reprovada, não aprovação.

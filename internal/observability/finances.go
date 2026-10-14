@@ -58,3 +58,12 @@ func NewFinancialMetrics() *FinancialMetrics {
 	})
 	return financeMetrics
 }
+
+// MetricKind bounds labels even for untrusted contract values.
+func MetricKind(kind string) string {
+	switch kind {
+	case "BET", "WIN", "LOSS", "REFUND", "ROLLBACK", "OPENING":
+		return kind
+	}
+	return "INVALID"
+}

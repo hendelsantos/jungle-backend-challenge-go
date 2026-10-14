@@ -11,6 +11,7 @@ import (
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/application/ports"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/domain/money"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/domain/wagering"
+	"github.com/hendelsantos/jungle-backend-challenge-go/internal/observability"
 )
 
 type wagerRequest struct {
@@ -50,6 +51,11 @@ func (a API) processWager(w http.ResponseWriter, r *http.Request, id requestIden
 		return
 	}
 	start := time.Now()
+	if a.Fin != nil {
+		defer func() {
+			a.Fin.Duration.WithLabelValues(observability.MetricKind(string(body.Kind))).Observe(time.Since(start).Seconds())
+		}()
+	}
 	result, err := a.Process.ProcessWager(r.Context(), command.ProcessWagerInput{
 		ProviderID: id.Principal.ProviderID, ExternalTransactionID: body.ExternalTransactionID,
 		IdempotencyKey: keys[0], PlayerID: body.PlayerID, WalletID: body.WalletID, RoundID: body.RoundID,
@@ -72,7 +78,6 @@ func (a API) processWager(w http.ResponseWriter, r *http.Request, id requestIden
 		} else {
 			a.Fin.Operations.WithLabelValues(string(body.Kind), string(result.Status)).Inc()
 		}
-		a.Fin.Duration.WithLabelValues(string(body.Kind)).Observe(time.Since(start).Seconds())
 	}
 	response := wagerResult{TransactionID: result.TransactionID, Status: result.Status, WalletVersion: result.WalletVersion, FailureCode: result.FailureCode, IdempotentReplay: result.IdempotentReplay}
 	if result.HasBalance {

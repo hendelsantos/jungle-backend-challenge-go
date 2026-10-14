@@ -204,3 +204,9 @@ identidades/digest. A07: lock real, relógio defasado e TTL pós-lock passam. A0
 dois ciclos Fx reais passam sem collectors retendo banco encerrado. A11:
 conclusão observada pós-commit, replay separado e falha de DLQ distinta.
 [Evidências desta rodada](audit/2026-10-14/README.md).
+
+A04–A06/A08/A10: instrumentos, regressões e resultados atuais em
+[PERFORMANCE_REPORT.md](PERFORMANCE_REPORT.md) e [evidências](audit/2026-10-14/README.md).
+A02 segue **não atendido no restart do broker**: 14 mensagens aceitas perdidas;
+publicações pendentes durante indisponibilidade temporária se recuperam.
+A01: envio anônimo aceito mesmo com política Deny e ENFORCE_IAM=1.

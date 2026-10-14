@@ -36,8 +36,8 @@
 **Diagnóstico:** `docker compose ps`; `docker compose logs postgres`;
 conexões (`pg_stat_activity`).
 
-**Resposta:** reiniciar `postgres` (`docker compose restart postgres`); o
-health gate do compose segura as réplicas (sem hidden writes). Pós-recuperação:
+**Resposta:** reiniciar `postgres` (`docker compose restart postgres`); o gate de dependências do Compose vale na inicialização, não bloqueia
+tráfego de processos já iniciados. Pós-recuperação:
 conferir `/health/ready` em todas as réplicas e rodar `cmd/verifywallet` nas
 últimas carteiras ativas para confirmar integridade.
 
@@ -54,8 +54,8 @@ conferir `/health/ready` em todas as réplicas e rodar `cmd/verifywallet` nas
 **Sintomas:** readiness 503 (`checks.sqs`); consumidor/publisher registram
 erros `sendMessage/Receive` com backoff.
 
-**Resposta:** `docker compose restart localstack`; as réplicas só voltam a
-servir com o broker saudável (readiness 503 até lá). **Limitação real do
+**Resposta:** `docker compose restart localstack`; readiness fica 503 até recuperar filas; o gateway local não remove
+réplicas automaticamente. **Limitação real do
 ambiente de desenvolvimento, verificada empiricamente em 13/10/2026:** o
 LocalStack Community não tem persistência (`PERSISTENCE=1` não persiste filas
 na edição Community — restart de prova apagou a fila; persistência é recurso
@@ -66,8 +66,8 @@ APIs → filas recriadas, readiness 200, **fila de eventos com 0 mensagens: os
 2 eventos publicados foram perdidos do broker**. O banco de outbox permanece
 auditável; republicação automática desses eventos não é o desenho — a
 garantia at-least-once cobre perdas ANTES do ack, não a perda do armazenamento
-do broker depois. Em produção com SQS gerenciado essa classe de perda não
-existe (durabilidade do serviço). Não afirmar "não há perda" ao reiniciar o
+do broker depois. SQS gerenciado tem garantias próprias de durabilidade, que não foram
+validadas neste ambiente. Não afirmar "não há perda" ao reiniciar o
 broker de desenvolvimento. Conferir §4 para o caso de eventos pendentes
 (pré-ack).
 
@@ -133,3 +133,25 @@ exercícios cobertos (`scripts/fault.sh`).
   constatando `difference=0`.
 - O environment local (Compose) é descartável: `docker compose down -v`
   apaga dados de desenvolvimento — nunca executado contra banco externo.
+
+## Evidência atual do broker — 14/10/2026
+
+`scripts/broker-probe.py` comprovou em container exclusivo com volume,
+PERSISTENCE=1 e ENFORCE_IAM=1: envio anônimo sob política Deny recebeu 200;
+após restart, GetQueueUrl retornou QueueDoesNotExist. Configuração consultada
+na [documentação LocalStack](https://docs.localstack.cloud/aws/customization/configuration-options/)
+e [persistência](https://docs.localstack.cloud/aws/developer-tools/snapshots/persistence/).
+Não foi encontrada configuração gratuita funcional para a imagem 4.14.0 usada.
+
+`scripts/broker-recovery.py` (apenas com FAULT_DISPOSABLE=1 e projeto explícito)
+separa os casos: broker pausado → readiness 503 e dois eventos persistidos ainda
+pendentes → unpause → ambos publicados. Depois, 14 mensagens visíveis e 38
+outboxes publicadas → restart do broker → filas ausentes/readiness 503 → restart
+das APIs → readiness 200, zero mensagens e as mesmas 38 publicadas. **Exit 2**
+é a reprovação de durabilidade esperada nesse ambiente; não é teste aprovado.
+Banco pausado também levou readiness a 503; unpause recuperou prontidão.
+
+O gateway local não bloqueia tráfego com base na readiness. Uma dependência
+indisponível não implica que Compose vá parar/reiniciar APIs existentes.
+Recuperar publicação pendente é diferente de recuperar armazenamento perdido
+pelo broker após confirmação. Nenhuma garantia absoluta sobre AWS foi validada.

@@ -5,6 +5,9 @@ import { Rate, Counter } from 'k6/metrics';
 // technical failures, add(false) otherwise), so the denominator is the total
 // number of classified operations — never the number of failures.
 export const technicalErrorRate = new Rate('financial_technical_error_rate');
+export const auxiliaryErrorRate = new Rate('auxiliary_technical_error_rate');
+const auxiliaryErrors = new Counter('auxiliary_technical_errors');
+const auxiliaryTimeouts = new Counter('auxiliary_timeouts');
 
 // Class counters are k6 metrics: they aggregate across VUs and into the
 // end-of-test summary (plain JS objects are per-VU and cannot do this).
@@ -61,17 +64,16 @@ export function classify(res) {
   return kind;
 }
 
-// noteTechnical feeds ONLY the technical-error rate (and the technical
-// counters) for auxiliary calls — token fetches, wallet openings and reads —
+// noteTechnical feeds a separate rate and counters for auxiliary calls — token fetches, wallet openings and reads —
 // without polluting the per-class financial operation counters.
 export function noteTechnical(res) {
   const message = res.error ? String(res.error) : '';
   if (res.status === 0 || res.status >= 500) {
-    if (message.includes('timeout')) counters.timeouts.add(1);
-    counters.technical.add(1);
-    technicalErrorRate.add(1);
+    if (message.includes('timeout')) auxiliaryTimeouts.add(1);
+    auxiliaryErrors.add(1);
+    auxiliaryErrorRate.add(1);
     return 'technical';
   }
-  technicalErrorRate.add(0);
+  auxiliaryErrorRate.add(0);
   return 'ok';
 }

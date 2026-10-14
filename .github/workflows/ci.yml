@@ -37,7 +37,7 @@ jobs:
       - name: vet integration build
         run: go vet -tags=integration ./...
       - name: unit tests with race detector
-        run: go test -race ./...
+        run: go test -race ./... -count=2
       - name: build all commands
         run: |
           go build -trimpath -o bin/server ./cmd/server
@@ -52,7 +52,7 @@ jobs:
           go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
           $(go env GOPATH)/bin/govulncheck ./...
       - name: gitleaks (full history)
-        run: docker run --rm -v "$GITHUB_WORKSPACE:/repo" ghcr.io/gitleaks/gitleaks:latest git /repo --no-banner --redact
+        run: docker run --rm -v "$GITHUB_WORKSPACE:/repo" ghcr.io/gitleaks/gitleaks:latest git /repo --config /repo/.gitleaks.toml --no-banner --redact
 
   integration:
     name: integration suite (postgres + keycloak + localstack)
@@ -82,7 +82,7 @@ jobs:
           TEST_SQS_ENDPOINT: http://localhost:4566
           AWS_ACCESS_KEY_ID: test
           AWS_SECRET_ACCESS_KEY: test
-        run: go test -race -tags=integration ./... -count=1
+        run: go test -race -tags=integration ./... -count=2
       - name: teardown dependencies
         if: always()
         run: docker compose -f compose.dev.yaml down -v

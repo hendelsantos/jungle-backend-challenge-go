@@ -46,3 +46,43 @@ retries de inbox/referências, duração SQS e falha de publicação na DLQ medi
 Regressões com `-race -count=2` verificam replay sem novo efeito, rollback sem
 conclusão e DLQ rejeitada sem contagem de entrega. Métricas são best-effort:
 crash após commit pode perder incremento; ledger e SQL são a prova financeira.
+
+## Autorização e durabilidade do broker
+
+Probe separado: `localstack/localstack:4.14.0`, volume exclusivo montado em
+`/var/lib/localstack`, PERSISTENCE=1 e ENFORCE_IAM=1. `scripts/broker-probe.py`
+registrou SendMessage anônimo sob política Deny → HTTP 200, uma mensagem visível;
+após restart, GetQueueUrl → HTTP 400 QueueDoesNotExist. Isso **reprova** IAM e
+persistência nessa imagem. Não foi usado plano pago ou AWS real.
+
+`FAULT_DISPOSABLE=1 python3 scripts/broker-recovery.py` no projeto exclusivo:
+indisponibilidade temporária → readiness 503 → dois eventos pendentes →
+recuperação → dois publicados. Restart posterior: 14 mensagens visíveis e 38
+outboxes publicadas → filas perdidas → readiness 503 → restart das APIs →
+readiness 200, zero mensagens e as mesmas 38 outboxes publicadas. Exit 2,
+durabilidade reprovada. PostgreSQL pausado também produziu readiness 503.
+Primeira tentativa do probe não tratava saída vazia de ListQueues; corrigido
+o parser para `{}` e repetido. Nenhuma inferência de recuperação pós-ACK.
+
+## Validadores e segurança
+
+A08: identificadores de 513 bytes, multibyte e 12.000 bytes rejeitados por HTTP
+400/SQS DLQ sem movimento; limite de 512 bytes exercitado no caso de uso.
+Integração dos adaptadores: 81 testes/subtestes pass, zero fail/skip.
+
+A10: parsers e snapshot passaram com `-race -count=2`. Teste real faz WIN
+concorrente depois da primeira leitura: auditoria ainda vê abertura 100.00 e
+um lançamento, enquanto outra conexão confirma saldo atual 125.00. Sem
+snapshot esse cenário produziria uma divergência falsa.
+
+`govulncheck@v1.9.0 ./...`: exit 0, No vulnerabilities found. Gitleaks detectou
+a string fictícia `test-signing-key-a-at-least-32-bytes` em metrics_test.go,
+commit 17499c3. Revisão confirmou fixture de httptest, sem serviço externo.
+`.gitleaks.toml` permite somente esse valor literal (regex ancorada); nova
+varredura do histórico: 44 commits, no leaks found. Não houve credencial real
+revelada nem reescrita de histórico. CI usa a mesma configuração explicitamente.
+
+CI do incremento `17499c3`: [run 38534939043](https://github.com/hendelsantos/jungle-backend-challenge-go/actions/runs/38534939043)
+falhou no Gitleaks pela fixture acima; integração remota foi ignorada pela
+ dependência desse job. A falha não foi mascarada: configuração de exceção
+restrita e nova execução serão verificadas no próximo commit.

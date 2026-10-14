@@ -82,7 +82,7 @@ re-executados após o change.
 p50/p95/p99 por nível (default pool, execução limpa): 10 VUs 56/393/586 ms
 (350 rps); 25 VUs: 172/657/869 ms (170 rps); 50 VUs: 222/849–1050/1380 ms
 (127 rps); 100 VUs: 280/1010/1440 ms (112 rps). Soak 15 m @25 VUs: p50 13 ms,
-p95 144 ms, **zero erros técnicos**, reconciliação ao vivo 10400/10400
+p95 144 ms, **http_req_failed=0 no run histórico; taxa customizada antiga não confiável**, 10.000 checks de BET e 400 checks de reconciliação aprovados (run de aproximadamente sete minutos)
 consistentes e outbox sempre drenada (números completos no
 `docs/PERFORMANCE_REPORT.md`).
 

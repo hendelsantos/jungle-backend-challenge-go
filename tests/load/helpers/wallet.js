@@ -18,6 +18,7 @@ export function openWallet(playerId, opening, scenarioTag, idempotencyKey) {
   });
   noteTechnical(res);
   const body = res.json ? res.json() : {};
+  if (body.id) console.info(`audit-wallet scenario=${scenarioTag} id=${body.id}`);
   return body.id || null;
 }
 

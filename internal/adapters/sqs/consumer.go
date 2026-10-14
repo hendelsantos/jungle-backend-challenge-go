@@ -131,7 +131,7 @@ func (c *Consumer) handle(parent context.Context, message types.Message) {
 	started := time.Now()
 	result, err := c.Consume(ctx, input)
 	if c.Metrics != nil {
-		c.Metrics.Duration.WithLabelValues(string(input.Wager.Kind)).Observe(time.Since(started).Seconds())
+		c.Metrics.Duration.WithLabelValues(observability.MetricKind(string(input.Wager.Kind))).Observe(time.Since(started).Seconds())
 	}
 	if err != nil {
 		if c.Metrics != nil && errors.Is(err, ports.ErrIdempotencyConflict) {

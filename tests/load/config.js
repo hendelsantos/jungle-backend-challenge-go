@@ -42,7 +42,6 @@ export const config = {
   soakVus: Number(__ENV.SOAK_VUS || 25),
   soakDuration: __ENV.SOAK_DURATION || '15m',
   soakAmount: __ENV.SOAK_AMOUNT || '1.00',
-  soakIterationsPerVu: Number(__ENV.SOAK_ITERATIONS_PER_VU || 400),
 
   // Barrier offset so racing scenarios fire after setup finished.
   barrierMs: Number(__ENV.BARRIER_MS || 1500),

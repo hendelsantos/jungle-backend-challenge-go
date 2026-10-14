@@ -29,3 +29,11 @@ func TestParseCountsRejectsMalformedExpectations(t *testing.T) {
 		}
 	}
 }
+
+func TestOptionalCountRejectsNegativeAndMalformed(t *testing.T) {
+	for _, input := range []string{"-1", "oops", "9223372036854775808", "1.5"} {
+		if _, _, err := optionalInt(input); err == nil {
+			t.Fatalf("accepted %q", input)
+		}
+	}
+}

@@ -1313,3 +1313,18 @@ Aprendizado: callbacks observacionais devem ocorrer depois do commit; build tags
 excluem instrumentação do binário normal; `context` libera failpoints em SIGTERM.
 Perguntas: por que inbox e saldo compartilham commit? Por que lease precisa de
 um token por claim? Por que métricas não substituem o ledger?
+
+### Instrumentos e limites do ambiente — 14/10/2026
+
+A04/A05: corrigido cálculo de contenção com poucas apostas; separado denominador
+financeiro do auxiliar; sonda exige contagens exatas, incluindo 401/403/timeout.
+Oito cenários k6 + SQL de todas as carteiras passaram. Soak atual é de 60s;
+relato antigo corrigido para aproximadamente sete minutos (A06). A08: testes
+HTTP/SQS de entrada longa/multibyte passaram. A10: verificador em snapshot
+REPEATABLE READ, teste com commit concorrente aprovado. Smoke exige 49 replays
+e inclui cenário literal 100−80=20. Scanner atualizado passou; exceção de
+Gitleaks somente para fixture fictícia exata. A01/A02 permanecem parciais/abertos:
+probes reais confirmaram ausência de IAM e perda pós-ACK no broker gratuito.
+
+Perguntas: por que um check precisa de threshold? Por que snapshot evita falsa
+divergência? Por que published_at não prova retenção futura pelo broker?

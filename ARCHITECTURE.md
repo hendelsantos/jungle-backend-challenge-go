@@ -591,3 +591,12 @@ PENDING_REFERENCE e depois seu resultado terminal. Retries de inbox/referências
 são distintos por reason; falha de cópia à DLQ não incrementa entregas. Redrive
 automático do broker exige monitoramento do broker. Contadores não são duráveis:
 um crash após commit pode perder o incremento, portanto não substituem SQL.
+
+### Auditoria independente do estado (14/10/2026)
+
+`cmd/verifywallet` abre REPEATABLE READ READ ONLY por carteira para todas as
+consultas; valida erros de iteração e parâmetros numéricos. Teste com WIN
+confirmada entre leituras comprova snapshot estável. HTTP e SQS observam
+latência de tentativas do caso de uso com kind limitado a enum/INVALID,
+impedindo cardinalidade controlada pelo cliente. A taxa k6 de wagers não
+inclui chamadas auxiliares no denominador.

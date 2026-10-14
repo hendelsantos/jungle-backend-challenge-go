@@ -1,7 +1,7 @@
 # Suíte de performance com k6
 
 Estes cenários medem o backend de entrega com carga real e independente, e
-cada um fecha com validação financeira. Nada aqui altera o sistema: os dados
+cada um fecha com validação financeira. Os cenários criam carteiras e movimentações: os dados
 são fictícios, o alvo é `127.0.0.1`, e a suíte usa os mesmos contratos
 autenticados de qualquer cliente.
 
@@ -32,6 +32,7 @@ k6 version                            # v2.3.0 usado nos experimentos (k6 CLI)
 ## Executando
 
 ```sh
+mkdir -p tests/load/results
 cd tests/load
 k6 run --summary-export results/smoke.json scenarios/smoke.js
 k6 run --summary-export results/ramp-up.json scenarios/ramp-up.js
@@ -51,6 +52,7 @@ somente leitura a soma do ledger, a cadeia de saldos, a contagem por kind/status
 (pendências), e o saldo persistido. Exemplos conforme cada cenário:
 
 ```sh
+# Execute a partir da raiz do repositório.
 SURL='postgres://jungle:jungle-local@127.0.0.1:59532/jungle?sslmode=disable'
 go build -o bin/verifywallet ./cmd/verifywallet
 
@@ -75,11 +77,36 @@ Os `WALLET_ID` s podem vir da API (respostas de abertura ou `SELECT out =
 - O alvo é sempre localhost/Compose isolado. Não há direção externa.
 - Thresholds cumprem metas experimentais do relatório (p95<500ms em carga
   moderada, erros técnicos < 1%) e são ajustados por variável de ambiente.
-- 422/409 são resultados legítimos e contam como sucesso financeiro; apenas
-  `financial_technical_error_rate` (erros técnicos/5xx/timeout) vira falha.
+- 422/409 são classificados separadamente. Todos os checks financeiros têm
+  threshold obrigatório; qualquer check falho reprova. A taxa financeira usa
+  somente wagers; chamadas auxiliares têm taxa própria.
 - Os saldos de abertura dos pools (`WALLET_POOL_OPENING`, 100000.00) são
   fictícios e irreais e são usados somente para medir latência sob carga.
 - [`results/`] arquivos são dados de teste; não versionados.
-- Ajustes por variáveis: `SOAK_DURATION`, `SOAK_VUS`, `SOAK_ITERATIONS_PER_VU`,
+- Ajustes por variáveis: `SOAK_DURATION`, `SOAK_VUS`,
   `WALLET_POOL_SIZE`, `RAMP_LEVEL`, `RAMP_HOLD`, `BARRIER_MS`, entre outros no
   `config.js`.
+
+## Regressão reproduzível dos instrumentos
+
+Da raiz, com Compose isolado já pronto:
+
+```sh
+k6 run tests/load/probes/classifier-probe.js
+# Sonda propositalmente negativa: deve sair 99, não zero.
+k6 run tests/load/probes/gate-negative-probe.js
+
+GATEWAY_URL=http://localhost:9080 KEYCLOAK_URL=http://localhost:59080 \
+DATABASE_URL='postgres://jungle:jungle-local@127.0.0.1:59532/jungle?sslmode=disable' \
+bash scripts/load-regression.sh
+```
+
+O runner executa smoke, idempotência padrão e 2×1.00, contenção padrão e
+2×1.00 sobre 100.00, 25 carteiras com dois ciclos completos, rampa de 25 VUs
+por 30s mais 10s de descida e ensaio sustentado **de 60 segundos** com 25 VUs.
+Registra duração real e resumo JSON com p50/p95/p99. Cada cenário passa pelo
+verificador SQL independente em **todas** as carteiras criadas, incluindo
+expectativas exatas para contenção/idempotência/multiwallet. O verificador usa
+REPEATABLE READ READ ONLY; expectativas de contagem final exigem carga concluída.
+Use `RESULTS_DIR` para escolher o diretório dos artefatos (padrão `/tmp`).
+O ensaio de 60s não substitui uma campanha de endurance de 15 minutos.

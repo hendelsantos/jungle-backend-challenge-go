@@ -373,6 +373,7 @@ func TestAuthenticatedFinancialHTTPIntegration(t *testing.T) {
 		input := wager(wallet, player, "BET", "25.00")
 		valid := encode(t, input)
 		invalid := [][]byte{
+
 			[]byte(`null`), append(append([]byte{}, valid...), []byte(` {}`)...),
 			[]byte(strings.Replace(string(valid), `"providerId":"provider-a"`, `"providerId":"provider-a","providerId":"provider-b"`, 1)),
 			[]byte(strings.Replace(string(valid), `"amount":"25.00"`, `"amount":25.00`, 1)),
@@ -380,6 +381,11 @@ func TestAuthenticatedFinancialHTTPIntegration(t *testing.T) {
 			[]byte(strings.Replace(string(valid), `"kind":"BET"`, `"kind":"OPENING"`, 1)),
 			[]byte(strings.Replace(string(valid), `"kind":"BET"`, `"kind":null`, 1)),
 			[]byte(strings.Replace(string(valid), `"kind":"BET"`, `"kind":"BET","extra":"field"`, 1)),
+		}
+		for _, identifier := range []string{strings.Repeat("x", 513), strings.Repeat("é", 257), strings.Repeat("a", 12000)} {
+			copyInput := wager(wallet, player, "BET", "25.00")
+			copyInput["externalTransactionId"] = identifier
+			invalid = append(invalid, encode(t, copyInput))
 		}
 		for _, body := range invalid {
 			status, response := f.request(t, "POST", "/wagering/transactions", a, uuid.NewString(), body)

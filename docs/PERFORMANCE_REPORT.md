@@ -1,3 +1,8 @@
+> Correção de auditoria (14/10/2026): tabelas históricas abaixo não são a
+> regressão atual. O run antigo durou aproximadamente 419,47s, não 15 minutos;
+> 10.400 checks não significam 10.400 reconciliações. A instrumentação de erro
+> customizada antiga tinha denominador incorreto. Ver a seção final desta revisão.
+
 # Relatório de performance — k6 sobre o Compose de entrega
 
 > Coleta real executada em 13/10/2026 na máquina de desenvolvimento, contra o
@@ -46,7 +51,7 @@
 | C. Contenção | `per-vu-iterations` 50×1 | 50 BETs distintas de 30.00 em burst sobre carteira de 1000.00 |
 | D. Idempotência | `per-vu-iterations` 50×1 | 50 requisições idênticas (mesma chave) em burst |
 | E. Carteiras independentes | `per-vu-iterations` 25×2 | ciclo BET→WIN→LOSS→REFUND→ROLLBACK por carteira |
-| F. Soak | `per-vu-iterations` 25 VUs × 400 it. | 15 min, BET 1.00 + reconciliação ao vivo a cada 25 iterações |
+| F. Soak | `per-vu-iterations` 25 VUs × 400 it. | teto de 15 min; duração observada ≈419,47s; BET 1.00 + reconciliação a cada 25 iterações |
 
 ## 4. Latência e throughput — execução em baseline limpo
 
@@ -62,7 +67,7 @@ rps medido pelo k6 (execução limpa; "med" da reexecução com `--summary-trend
 | Contenção (50×30 burst) | 899 ms | 1530 ms | 1580 ms | 33 (durante 4,5 s de burst) | 0 | consistente |
 | Idempotência (50 idênticas) | 263 ms | 671 ms | 697 ms | 51 (durante 3,3 s de burst) | 0 | consistente |
 | Multiwallet (25×2 ciclos) | 218 ms | 354 ms | 376 ms | 117 | 0 | consistente |
-| Soak 15 min @25 VUs | 13 ms | 144 ms | (max 4,4 s isolado) | 25 rps desde 10,5k requests | 0 | 10400 checks: 100% consistentes |
+| Ensaio finito ≈7 min @25 VUs | 13 ms | 144 ms | (max 4,4 s isolado) | 25 rps desde 10,5k requests | 0 | 10.000 checks de BET + 400 de reconciliação aprovados |
 
 Observações importantes das medidas:
 
@@ -105,7 +110,7 @@ zero `PENDING_REFERENCE` sobressalente; eventos de outbox associados por
    (~80k eventos), observou-se `jungle_outbox_pending` crescer (135k e
    `outbox_oldest_age` > 12 min) com o publisher a ~21 eventos/s por réplica e o
    custo por BET subindo (INSERT + varreduras do índice parcial com 135k linhas
-   não publicadas). Já o soak de 15 min com 25 VUs manteve `pending=0` e
+   não publicadas). Já o ensaio finito de aproximadamente sete minutos com 25 VUs manteve `pending=0` e
    `oldest=0` — o publisher dimensiona bem cargas moderadas; em volumes acima,
    recomenda-se batching de claims e deduplicação no lado do consumidor
    (at-least-once já documentado).
@@ -154,3 +159,42 @@ zero `PENDING_REFERENCE` sobressalente; eventos de outbox associados por
 `go test -race ./...` 14 pacotes `ok`; `go test -race -tags=integration ./...
 -count=1` com PostgreSQL/Keycloak/LocalStack reais: 14 pacotes `ok`.
 Nenhum arquivo de schema/código financeiro foi alterado para benchmarks.
+
+## Regressão de entrega — 14/10/2026
+
+Comando: `scripts/load-regression.sh`, gateway :19080, Keycloak :19090,
+PostgreSQL :19532, três APIs e LocalStack 4.14.0 no projeto isolado
+`jungle-mission-1410-0515`. Versão de código: correções desta missão após
+`17499c3`. Relatório fonte: [métricas brutas e auditorias SQL](audit/2026-10-14/load-results.json).
+Duração abaixo é wall-clock do comando k6, incluindo setup/teardown; throughput
+é o `http_reqs.rate` do k6 (inclui chamadas auxiliares). Latências são de wagers,
+exceto smoke, que expõe apenas o agregado HTTP. Sem meta oficial mínima de RPS.
+
+| Cenário / configuração | Wall (s) | HTTP req/s | p50 ms | p95 ms | p99 ms | Checks falhos | Carteiras SQL |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| smoke | 0.25 | 173.14 | 5.14 | 10.63 | 10.84 | 0 | 1 |
+| idempotency | 2.46 | 48.29 | 168.94 | 625.35 | 633.82 | 0 | 1 |
+| idempotency-custom | 3.66 | 3.16 | 994.05 | 1690.94 | 1752.89 | 0 | 1 |
+| contention | 2.89 | 46.27 | 432.05 | 614.81 | 628.58 | 0 | 1 |
+| contention-custom | 1.74 | 7.11 | 10.45 | 13.20 | 13.44 | 0 | 1 |
+| multiwallet | 0.63 | 862.58 | 11.90 | 32.53 | 35.81 | 0 | 25 |
+| ramp | 40.49 | 421.21 | 24.38 | 63.51 | 87.93 | 0 | 25 |
+| soak | 61.03 | 26.75 | 20.78 | 33.63 | 71.10 | 0 | 25 |
+
+Todos os comandos k6 e verificadores SQL saíram 0. Taxa técnica dos wagers: 0
+em cada cenário; as chamadas auxiliares têm denominador separado. Contenção
+padrão: 33 processadas/17 rejeitadas; custom: duas processadas sobre 100.00.
+Idempotência padrão: um efeito/49 replays; custom: 2 pedidos de 1.00, saldo
+99.00. Multiwallet: 25 carteiras, dois ciclos completos por carteira. Rampa:
+25 VUs, hold 30s + descida 10s. Soak curto: 25 VUs por 60s, 1.475 BETs e
+75 checks de reconciliação ao vivo (1.550 checks totais). **Nenhum novo soak
+de 15 minutos foi executado.** Não extrapolar estabilidade de longa duração.
+
+A sonda sintética exige 1.000 operações, dois erros técnicos (0,2%), três
+rejeições de contrato e contagens exatas de replay/conflito/rejeição/timeout.
+Chamadas auxiliares não diluem esse denominador. Passou. Sonda financeira
+propositalmente negativa saiu 99, como exigido.
+
+O pico do atraso da outbox durante esta campanha não foi amostrado; não se
+afirma backlog zero durante toda a carga. Falhas e recuperação da outbox são
+demonstradas separadamente pelos ensaios E/F e broker-recovery, não pela taxa HTTP.

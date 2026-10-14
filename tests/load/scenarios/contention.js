@@ -63,9 +63,11 @@ export function teardown(data) {
   // of winning bets is floor(opening/amount); each winner debits once.
   const opening = toCents(config.contentionOpening);
   const amount = toCents(config.contentionAmount);
-  const winners = opening / amount; // BigInt floor division: exact
+  const affordable = opening / amount;
+  const requested = BigInt(config.contentionBets);
+  const winners = affordable < requested ? affordable : requested; // BigInt floor division: exact
   const expected = formatCents(opening - winners * amount);
-  const expectedRows = 1 + Number(winners);
+  const expectedRows = (opening > 0n ? 1 : 0) + Number(winners);
 
   const finalBalance = balance(data.walletId, 'contention-teardown');
   check(finalBalance, { 'contention final balance matches the computed winners': (b) => b === expected })
