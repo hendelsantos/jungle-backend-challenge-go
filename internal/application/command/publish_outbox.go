@@ -20,6 +20,10 @@ type PublishOutboxDeps struct {
 	Publisher ports.EventPublisher
 	Metrics   *observability.OutboxMetrics
 	Logger    *slog.Logger
+	// PostSendPause holds the worker between the SQS send and the outbox
+	// acknowledgement, creating an observable kill window for the failure
+	// drills. Test instrumentation only: zero in production configurations.
+	PostSendPause time.Duration
 }
 
 // PublishNext claims exactly one committed event. No batch is leased ahead of
@@ -57,6 +61,9 @@ func (d PublishOutboxDeps) PublishNext(parent context.Context) (bool, error) {
 		}
 		d.log("outbox publish failed", event, code)
 		return true, errors.Join(fmt.Errorf("publish outbox: %w", err), retryErr)
+	}
+	if d.PostSendPause > 0 {
+		time.Sleep(d.PostSendPause)
 	}
 	if err := d.Outbox.MarkPublished(ctx, event.EventID, event.LeaseToken); err != nil {
 		d.Metrics.ConfirmationFailures.Inc()

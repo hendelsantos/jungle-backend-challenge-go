@@ -8,8 +8,20 @@ import { internalToken, providerToken, authHeader } from '../helpers/auth.js';
 import { openWallet, balance, reconciliation, ledgerRows } from '../helpers/wallet.js';
 import { sendWager } from '../helpers/wager.js';
 import { uuid4 } from '../helpers/ids.js';
+import { subAmounts } from '../helpers/money.js';
 
-export const options = { vus: 1, iterations: 1, thresholds: { http_req_duration: ['p(95)<500'] } };
+const OPENING = '150.00';
+const BET = '25.00';
+
+export const options = {
+  vus: 1,
+  iterations: 1,
+  thresholds: {
+    http_req_duration: ['p(95)<500'],
+    // The financial gate: ANY failed check fails the whole run (exit != 0).
+    checks: ['rate==1.0'],
+  },
+};
 
 export function setup() {
   const res = http.get(`${config.gatewayUrl}/health/ready`, { timeout: '5s' });
@@ -18,7 +30,7 @@ export function setup() {
   }
   const runId = `${Date.now()}`;
   const playerId = uuid4();
-  const walletId = openWallet(playerId, '150.00', 'smoke', `smoke-open-${runId}`);
+  const walletId = openWallet(playerId, OPENING, 'smoke', `smoke-open-${runId}`);
   if (!walletId) fail('wallet opening failed in smoke');
   return { walletId, playerId, runId };
 }
@@ -26,19 +38,19 @@ export function setup() {
 export default function (data) {
   const externalId = `smoke-bet-${data.runId}`;
 
-  const first = sendWager({ kind: 'BET', playerId: data.playerId, walletId: data.walletId, roundId: 'smoke-r1', amount: '25.00', externalId, idempotencyKey: externalId, scenarioTag: 'smoke' });
+  const first = sendWager({ kind: 'BET', playerId: data.playerId, walletId: data.walletId, roundId: 'smoke-r1', amount: BET, externalId, idempotencyKey: externalId, scenarioTag: 'smoke' });
   check(first.res, {
     'BET accepted (200/202)': (r) => r.status === 200 || r.status === 202,
-    'BET has transactionId': (r) => !!first.body.transactionId,
+    'BET has transactionId': () => !!first.body.transactionId,
   }) || console.error(`smoke BET responded ${first.res.status}: ${first.res.body}`);
 
-  const replay = sendWager({ kind: 'BET', playerId: data.playerId, walletId: data.walletId, roundId: 'smoke-r1', amount: '25.00', externalId, idempotencyKey: externalId, scenarioTag: 'smoke' });
+  const replay = sendWager({ kind: 'BET', playerId: data.playerId, walletId: data.walletId, roundId: 'smoke-r1', amount: BET, externalId, idempotencyKey: externalId, scenarioTag: 'smoke' });
   check(replay.res, {
     'replay distinguishes idempotency': (r) => r.status === 200 && replay.body.idempotentReplay === true,
   });
 
   check(balance(data.walletId, 'smoke'), {
-    'balance reads 125.00': (b) => b === '125.00',
+    'balance is opening minus the single debit': (b) => b === subAmounts(OPENING, BET),
   });
 
   check(ledgerRows(data.walletId, 'smoke'), {

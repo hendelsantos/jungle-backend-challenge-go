@@ -4,7 +4,7 @@ import http from 'k6/http';
 import { sleep } from 'k6';
 import { config } from '../config.js';
 import { internalToken, authHeader } from './auth.js';
-import { noteTechnical, counters } from './classify.js';
+import { noteTechnical } from './classify.js';
 
 const headers = { 'Content-Type': 'application/json' };
 

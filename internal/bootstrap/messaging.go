@@ -18,7 +18,7 @@ import (
 // with the HTTP boundary; the inbox completion commits with the wager.
 func messagingModule() fx.Option {
 	return fx.Module("messaging",
-		fx.Provide(newSQSClient, newConsumeWagerDeps, newSQSConsumer, postgres.NewOutboxDeliveryRepository, newOutboxMetrics, newOutboxWorkerCount, newOutboxWorker),
+		fx.Provide(newSQSClient, newConsumeWagerDeps, newSQSConsumer, postgres.NewOutboxDeliveryRepository, newOutboxMetrics, newOutboxWorkerCount, newPublishAckPause, newOutboxWorker),
 		fx.Invoke(registerSQSConsumer, registerOutboxWorker, registerOutboxMetrics),
 	)
 }
@@ -46,14 +46,15 @@ func newConsumeWagerDeps(
 
 func newSQSConsumer(cfg Config, managed *sqsadapter.ManagedClient, consume command.ConsumeWagerDeps, finance *observability.FinancialMetrics, logger *slog.Logger) *sqsadapter.Consumer {
 	return &sqsadapter.Consumer{
-		Consume:       consume.ConsumeWagerMessage,
-		Client:        managed.Client,
-		WagerQueueURL: managed.Queues.WagerQueueURL,
-		DLQQueueURL:   managed.Queues.DLQQueueURL,
-		ConsumerName:  "wager-consumer",
-		Metrics:       finance,
-		Logger:        logger,
-		ProviderKeys:  cfg.SQSProviderKeys,
+		Consume:         consume.ConsumeWagerMessage,
+		Client:          managed.Client,
+		WagerQueueURL:   managed.Queues.WagerQueueURL,
+		DLQQueueURL:     managed.Queues.DLQQueueURL,
+		ConsumerName:    "wager-consumer",
+		Metrics:         finance,
+		PostCommitPause: cfg.TestPostCommitPause,
+		Logger:          logger,
+		ProviderKeys:    cfg.SQSProviderKeys,
 	}
 }
 

@@ -1,8 +1,8 @@
 // Cenário E — carteiras independentes: every wallet walks the complete
-// domain cycle BET → WIN → LOSS → REFUND → ROLLBACK. Two cycles leave the
-// opening balance untouched (each cycle nets zero) and produce an exact,
-// auditable shape: 1 opening + 4 ledger rows per cycle, 6 transactions per
-// cycle, no PENDING_REFERENCE, reconciliation consistent.
+// domain cycle BET → WIN → LOSS → REFUND → ROLLBACK. Each cycle nets zero and
+// produces an exact, auditable shape: 4 ledger rows and 5 transactions per
+// cycle, no PENDING_REFERENCE, reconciliation consistent. The teardown audits
+// EVERY wallet of the run; any failed check fails the whole run.
 import http from 'k6/http';
 import { check } from 'k6';
 import exec from 'k6/execution';
@@ -17,11 +17,14 @@ export const options = {
       executor: 'per-vu-iterations',
       vus: Number(__ENV.MULTIWALLET_USERS || 25),
       iterations: Number(__ENV.MULTIWALLET_CYCLES || 2),
-      maxDuration: '60s',
+      maxDuration: '120s',
     },
   },
   thresholds: {
     'http_req_duration{endpoint:process-wager}': ['p(95)<500'],
+    'financial_technical_error_rate': ['rate<0.01'],
+    // The financial gate: ANY failed check fails the whole run (exit != 0).
+    checks: ['rate==1.0'],
   },
 };
 
@@ -61,23 +64,27 @@ export default function (data) {
   const rollback = send('ROLLBACK', amount, refund.externalId);
 
   const results = [bet, win, loss, refund, rollback];
-  check(results.reduce((acc, item) => acc + (item.res.status === 200 ? 1 : 0), 0), {
-    'all five operations succeeded': (okCount) => okCount === 5,
+  check(results, {
+    'all five operations processed': (items) => items.every((item) => item.res.status === 200 && item.body.status === 'PROCESSED'),
+    'no technical errors in the cycle': (items) => items.every((item) => item.kind !== 'technical'),
   }) || results.forEach((item) => console.error(`multiwallet ${item.externalId}: ${item.res.status} ${item.res.body}`));
 }
 
 export function teardown(data) {
-  const before = balance(data.wallets[0].id, 'multiwallet-teardown');
-  const expectedRows = 1 + 4 * Number(__ENV.MULTIWALLET_CYCLES || 2);
-  const rows = ledgerRows(data.wallets[0].id, 'multiwallet-teardown');
-  check(rows, {
-    'wallet 0 ledger rows match the exact cycle shape': (n) => n === expectedRows,
-  }) || console.error(`multiwallet LEDGER MISMATCH: got ${rows}, want ${expectedRows}`);
-  check(before, {
-    'wallet 0 balance back to opening': (b) => b === config.multiwalletCycleBudget,
-  }) || console.error(`multiwallet BALANCE MISMATCH: ${before}`);
-  const recon = reconciliation(data.wallets[0].id, 'multiwallet-teardown');
-  check(recon, { 'reconciliation consistent': (r) => recon.json().consistent === true })
-    || console.error(`multiwallet RECON MISMATCH: ${recon.body}`);
-  console.info('multiwallet: per-wallet financial independence validated for sampled wallet; run cmd/verifywallet for the full audit');
+  // Audit EVERY wallet of the run: balance back to the opening amount and the
+  // exact ledger shape (1 opening + 4 rows per cycle), plus reconciliation.
+  const cycles = Number(__ENV.MULTIWALLET_CYCLES || 2);
+  const expectedRows = 1 + 4 * cycles;
+  data.wallets.forEach((wallet, i) => {
+    const current = balance(wallet.id, 'multiwallet-teardown');
+    check(current, { [`wallet ${i} balance back to opening`]: (b) => b === config.multiwalletCycleBudget })
+      || console.error(`multiwallet BALANCE MISMATCH wallet ${i}: got ${current}, want ${config.multiwalletCycleBudget}`);
+    const rows = ledgerRows(wallet.id, 'multiwallet-teardown');
+    check(rows, { [`wallet ${i} ledger rows match the exact cycle shape`]: (n) => n === expectedRows })
+      || console.error(`multiwallet LEDGER MISMATCH wallet ${i}: got ${rows}, want ${expectedRows}`);
+    const recon = reconciliation(wallet.id, 'multiwallet-teardown');
+    check(recon, { [`wallet ${i} reconciliation consistent`]: (r) => r.status === 200 && r.json().consistent === true })
+      || console.error(`multiwallet RECON MISMATCH wallet ${i}: ${recon.body}`);
+  });
+  console.info('multiwallet: all wallets audited; run cmd/verifywallet for the SQL-level independent audit');
 }

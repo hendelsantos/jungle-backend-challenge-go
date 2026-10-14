@@ -1,17 +1,17 @@
-// Cenário C — concorrência financeira: one wallet with 1000.00, fifty
-// DISTINCT bets of 30.00 fired as one burst. Software invariant: exactly 33
-// processed, 17 rejected with INSUFFICIENT_FUNDS, final balance 10.00 and a
-// clean ledger. Teardown validates persistence and aborts the scenario on any
-// technical failure (not on 422 — that is the designed outcome).
+// Cenário C — concorrência financeira: one wallet, N DISTINCT bets fired as
+// one burst. Software invariant: exactly floor(opening/amount) processed, the
+// rest rejected with INSUFFICIENT_FUNDS, exact final balance and a clean
+// ledger — all computed from the configuration with exact decimal arithmetic.
+// Teardown validates persistence; any failed check fails the run (threshold).
 import http from 'k6/http';
-import { check, sleep } from 'k6';
+import { check } from 'k6';
 import exec from 'k6/execution';
 import { config } from '../config.js';
 import { waitForBarrier } from '../helpers/barrier.js';
 import { openWallet, balance, reconciliation, ledgerRows } from '../helpers/wallet.js';
 import { sendWager } from '../helpers/wager.js';
 import { uuid4 } from '../helpers/ids.js';
-import { counters, classify } from '../helpers/classify.js';
+import { toCents, formatCents } from '../helpers/money.js';
 
 export const options = {
   scenarios: {
@@ -23,10 +23,12 @@ export const options = {
     },
   },
   thresholds: {
-    // Contention latency is dominated by 50-way row serialization by design;
+    // Contention latency is dominated by N-way row serialization by design;
     // sustained-load latency targets live in the ramp and soak scenarios.
     'http_req_duration{endpoint:process-wager}': ['p(95)<900', 'p(99)<1500'],
     'financial_technical_error_rate': ['rate<0.05'],
+    // The financial gate: ANY failed check fails the whole run (exit != 0).
+    checks: ['rate==1.0'],
   },
 };
 
@@ -49,26 +51,31 @@ export default function (data) {
     externalId: `cont-${data.runId}-${vuIndex}`, idempotencyKey: `cont-${data.runId}-${vuIndex}`,
     scenarioTag: 'contention',
   });
-  const kind = classify(result.res);
   check(result.res, {
-    'terminal mechanism reached': (r) => kind !== 'technical',
-    'rejected bets carry INSUFFICIENT_FUNDS': (r) =>
-      kind !== 'rejected' || result.body.failureCode === 'INSUFFICIENT_FUNDS',
+    'terminal mechanism reached': () => result.kind !== 'technical',
+    'rejected bets carry INSUFFICIENT_FUNDS': () =>
+      result.kind !== 'rejected' || result.body.failureCode === 'INSUFFICIENT_FUNDS',
   });
 }
 
 export function teardown(data) {
-  // Persistence validation happens once all fifty answers are final.
+  // Exact expectations from the configuration: with integer cents, the number
+  // of winning bets is floor(opening/amount); each winner debits once.
+  const opening = toCents(config.contentionOpening);
+  const amount = toCents(config.contentionAmount);
+  const winners = opening / amount; // BigInt floor division: exact
+  const expected = formatCents(opening - winners * amount);
+  const expectedRows = 1 + Number(winners);
+
   const finalBalance = balance(data.walletId, 'contention-teardown');
-  check(finalBalance, { 'contention final balance is 10.00': (b) => b === '10.00' })
-    || console.error(`contention BALANCE MISMATCH: got ${finalBalance}`);
+  check(finalBalance, { 'contention final balance matches the computed winners': (b) => b === expected })
+    || console.error(`contention BALANCE MISMATCH: got ${finalBalance}, want ${expected}`);
   const rows = ledgerRows(data.walletId, 'contention-teardown');
-  check(rows, { 'ledger rows: opening + 33 debits = 34': (n) => n === 34 })
-    || console.error(`contention LEDGER MISMATCH: got ${rows}`);
+  check(rows, { 'ledger rows: opening + computed winners': (n) => n === expectedRows })
+    || console.error(`contention LEDGER MISMATCH: got ${rows}, want ${expectedRows}`);
   const recon = reconciliation(data.walletId, 'contention-teardown');
-  check(recon, { 'contention reconciliation consistent': (r) => recon.json().consistent === true })
+  check(recon, { 'contention reconciliation consistent': (r) => r.status === 200 && recon.json().consistent === true })
     || console.error(`contention RECON MISMATCH: ${recon.body}`);
-  console.info(`contention counters: processed=${counters.processed.value} rejected=${counters.rejected.value} technical=${counters.technical.value}`);
-  if (counters.technical.value > 0) console.error('contention saw TECHNICAL errors');
-  void sleep; void config;
+  console.info(`contention: expected ${winners} winners from ${config.contentionOpening}/${config.contentionAmount}; ` +
+    'per-class counters aggregate in the k6 summary (financial_ops_*, technical_errors)');
 }

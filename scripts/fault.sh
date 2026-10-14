@@ -73,10 +73,30 @@ external_status() { # external_status EXTERNAL-ID
     -H "Authorization: Bearer $PROVIDER_TOKEN" | jq -r .status
 }
 
-not_visible() { # ApproximateNumberOfMessagesNotVisible of the intake queue
+queue_attr() { # queue_attr QUEUE-URL ATTRIBUTE-NAME -> numeric value
   $COMPOSE exec -T localstack sh -c \
-    "awslocal sqs get-queue-attributes --queue-url '$queue_url' --attribute-names ApproximateNumberOfMessagesNotVisible --query 'Attributes[0].Value' --output text 2>/dev/null" | tr -d '[:space:]'
+    "awslocal sqs get-queue-attributes --queue-url '$1' --attribute-names '$2' --query 'Attributes.$2' --output text 2>/dev/null" | tr -d '[:space:]'
 }
+
+# The drill windows are restored on ANY exit (success, fail() or Ctrl-C): a
+# replica left holding a pause would keep delaying commits/publishes.
+restore_drill_config() {
+  if [ -n "${JUNGLE_TEST_POST_COMMIT_PAUSE:-}" ] || [ -n "${JUNGLE_TEST_PUBLISH_ACK_PAUSE:-}" ]; then
+    export JUNGLE_TEST_POST_COMMIT_PAUSE= JUNGLE_TEST_PUBLISH_ACK_PAUSE=
+    $COMPOSE up -d --no-deps api >/dev/null 2>&1 || true
+  fi
+}
+trap restore_drill_config EXIT
+
+# Drill windows: replicas hold after commit (before delete) and after the
+# SQS send (before the outbox ack), giving observable, deterministic kill
+# points. Restored (empty) by the trap at the end of the script. --no-deps:
+# recreating postgres/keycloak/localstack here would wipe the dev broker and
+# regenerate the IdP signing keys mid-drill.
+export JUNGLE_TEST_POST_COMMIT_PAUSE=12s
+export JUNGLE_TEST_PUBLISH_ACK_PAUSE=12s
+$COMPOSE up -d --force-recreate --no-deps api >/dev/null 2>&1
+wait_replicas_healthy
 
 # The intake queue is provisioned by the api replicas at startup; after a
 # LocalStack restart only a replica restart re-creates it. The queue URL comes
@@ -120,33 +140,28 @@ cat > /tmp/fault-wager-$runId.json <<EOF
   }
 }
 EOF
+# The drill sets JUNGLE_TEST_POST_COMMIT_PAUSE so replicas hold BETWEEN the
+# durable commit and the DeleteMessage call — an observable kill window.
+# Synchronization: wait until the wager is committed (visible via API), then
+# kill DURING the pause; re-delivery must resolve as inbox replay.
 AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_SESSION_TOKEN= \
 SQS_ENDPOINT_URL="$SQS_URL" SQS_PROVIDER_KEY="$PROVIDER_KEY" \
   go run ./cmd/send-wager -provider provider-a -file /tmp/fault-wager-$runId.json >/dev/null \
   || fail "publishing signed wager"
 
-# Wait until a replica is holding the message (not visible), then kill the
-# three processes at once. Whatever the moment of death before (rollback
-# restarts) or after the commit (re-delivery replays the inbox), the identity
-# in PostgreSQL decides: exactly one debit.
-# The exact window (commit done, DeleteMessage pending) is deterministic in
-# the Go integration suite (failpoint). Here the drill syncs on the observable
-# broker signal (not-visible) and FAILS when neither the window was observed
-# nor the wager is already terminal: a kill without precondition proves nothing.
 inflight=""
 for _ in $(seq 1 120); do
-  n=$(not_visible)
-  case "$n" in ''|[!0-9]*) sleep 0.25; continue ;; esac
-  if [ "$n" -ge 1 ]; then inflight="$n"; break; fi
   if [ "$(external_status "$externalId" 2>/dev/null || echo none)" = "PROCESSED" ]; then
-    inflight="completed-before-kill"; break
+    inflight="committed-awaiting-delete"; break
   fi
   sleep 0.25
 done
-[ -n "$inflight" ] || fail "failed to observe the in-flight window within 30s"
-echo "  precondition observed: $inflight"
+[ -n "$inflight" ] || fail "wager never committed within 30s"
+echo "  precondition observed: $inflight (kill lands inside the post-commit pause)"
 $COMPOSE kill -s KILL api >/dev/null 2>&1 || fail "docker kill api"
-echo "  three api processes killed while the message was possibly in flight"
+echo "  three api processes killed AFTER commit, BEFORE DeleteMessage"
+# Recovery runs without the drill window so the redelivery deletes promptly.
+export JUNGLE_TEST_POST_COMMIT_PAUSE=
 $COMPOSE up -d api >/dev/null 2>&1
 wait_replicas_healthy
 
@@ -158,12 +173,26 @@ while true; do
   sleep 3
 done
 assert "wager processed once" "PROCESSED" "$status"
+# The redelivery must resolve as inbox replay: the message is eventually
+# deleted and the queue drains; any leftover would mean an unresolved copy.
+deadline=$((SECONDS+120))
+while true; do
+  v=$(queue_attr "$queue_url" ApproximateNumberOfMessages); nv=$(queue_attr "$queue_url" ApproximateNumberOfMessagesNotVisible)
+  case "$v$nv" in ''|*[!0-9]*) ;; *) [ "$v" = "0" ] && [ "$nv" = "0" ] && break ;; esac
+  if [ $SECONDS -gt $deadline ]; then fail "intake queue did not drain after restart (visible=${v:-?} not-visible=${nv:-?})"; fi
+  sleep 3
+done
+echo "  intake queue drained: the killed message was redelivered and resolved"
 assert "balance after redelivery" "75.00" "$(wallet_state "$wallet")"
 assert "ledger rows after redelivery" "2" "$(ledger_count "$wallet")"
 assert "reconciliation after redelivery" "true" "$(consistent "$wallet")"
 
 echo ""
-echo "=== TEST F: kill -9 after committing outbox events; publisher recovers"
+echo "=== TEST F: kill -9 after SQS accepted the event, before the outbox ack"
+# The drill sets JUNGLE_TEST_PUBLISH_ACK_PAUSE: the publisher holds BETWEEN
+# the SendMessage and the outbox ack. The event is observable on the events
+# queue (received WITHOUT deleting it), which proves the send happened; the
+# kill lands inside the pause; after restart the SAME eventId must flow again.
 competingPlayer=$(python3 -c 'import uuid;print(uuid.uuid4())')
 competingWallet=$(open_wallet 40.00 "$competingPlayer")
 curl -sf -X POST "$GATEWAY_URL/wagering/transactions" \
@@ -171,21 +200,64 @@ curl -sf -X POST "$GATEWAY_URL/wagering/transactions" \
   -H "Content-Type: application/json" \
   -d "{\"providerId\":\"provider-a\",\"externalTransactionId\":\"fault-f-bet-$runId\",\"playerId\":\"$competingPlayer\",\"walletId\":\"$competingWallet\",\"roundId\":\"fault-f-1\",\"gameId\":\"fortune-chimp\",\"kind\":\"BET\",\"money\":{\"amount\":\"10.00\",\"currency\":\"BRL\"}}" >/dev/null \
   || fail "committing an event for the publisher"
-sleep 1
+
+# Observe the published-but-unacknowledged event on the events queue and
+# capture its eventId: the republication after the kill must reuse it. The
+# event payload carries walletId/kind, not the external transaction id, so
+# the match keys on this test's unique wallet and the BET kind.
+events_url=$($COMPOSE exec -T localstack sh -c 'awslocal sqs get-queue-url --queue-name wager-events.fifo 2>/dev/null' | awk -F'"' '/QueueUrl/{print $4}')
+[ -n "$events_url" ] || fail "events queue URL unavailable"
+observed="" event_id=""
+for _ in $(seq 1 90); do
+  received=$($COMPOSE exec -T localstack sh -c \
+    "awslocal sqs receive-message --queue-url '$events_url' --max-number-of-messages 1 --wait-time-seconds 1 2>/dev/null")
+  if echo "$received" | grep -q "$competingWallet" && echo "$received" | grep -q "BET"; then
+    observed=1
+    event_id=$(echo "$received" | jq -r '.Messages[0].Body | fromjson | .eventId' 2>/dev/null || true)
+    break
+  fi
+  # Drain older session messages (dev broker is disposable; the outbox DB
+  # stays auditable) so the FIFO cursor reaches the target group.
+  rid=$(echo "$received" | awk -F'"' '/ReceiptHandle/{print $4}')
+  [ -n "$rid" ] && $COMPOSE exec -T localstack sh -c \
+    "awslocal sqs delete-message --queue-url '$events_url' --receipt-handle '$rid'" >/dev/null 2>&1
+done
+[ -n "$observed" ] || fail "published event never observed on the events queue"
+[ -n "$event_id" ] || fail "could not extract eventId from the published event"
+echo "  precondition observed: event $event_id on the events queue, outbox ack still pending"
 $COMPOSE kill -s KILL api >/dev/null 2>&1
-echo "  three api processes killed with committed events possibly unacknowledged"
-$COMPOSE up -d api >/dev/null 2>&1
+echo "  three api processes killed AFTER the SQS send, BEFORE the outbox ack"
+# Recovery runs without the drill window: with the ack pause active the
+# publisher could never confirm within its publish timeout, and the backlog
+# would never drain. Restoring the config is part of the recovery itself.
+export JUNGLE_TEST_PUBLISH_ACK_PAUSE=
+$COMPOSE up -d --force-recreate --no-deps api >/dev/null 2>&1
 wait_replicas_healthy
 
-deadline=$((SECONDS+120))
+# The abandoned claim must be recovered and acknowledged by another publisher:
+# the outbox drains to zero without any manual intervention.
+deadline=$((SECONDS+180))
 while true; do
-  pending=$(curl -s "$GATEWAY_URL/metrics" | grep '^jungle_outbox_pending ' | awk '{print $2}')
+  pending=$(curl -s "$GATEWAY_URL/metrics" | awk '/^jungle_outbox_pending /{print $2}')
   if [ "$pending" = "0" ]; then break; fi
-  if [ $SECONDS -gt $deadline ]; then fail "outbox did not drain (last: ${pending:-none})"; fi
+  if [ $SECONDS -gt $deadline ]; then fail "outbox did not drain after restart (last: ${pending:-none})"; fi
   sleep 3
 done
-assert "publisher drained the abandoned backlog after restart" "0" "$pending"
-assert "publisher wallet balance" "30.00" "$(wallet_state "$competingWallet")"
+echo "  outbox drained: pending=$pending"
+# The republished flow keeps the SAME eventId (FIFO dedup id = eventId): the
+# message reappears after the visibility timeout with the original identity.
+reobserved=""
+for _ in $(seq 1 60); do
+  received=$($COMPOSE exec -T localstack sh -c \
+    "awslocal sqs receive-message --queue-url '$events_url' --max-number-of-messages 1 --wait-time-seconds 1 2>/dev/null")
+  if echo "$received" | grep -q "$event_id"; then reobserved=1; break; fi
+  rid=$(echo "$received" | awk -F'"' '/ReceiptHandle/{print $4}')
+  [ -n "$rid" ] && $COMPOSE exec -T localstack sh -c \
+    "awslocal sqs delete-message --queue-url '$events_url' --receipt-handle '$rid'" >/dev/null 2>&1
+done
+[ -n "$reobserved" ] || fail "event $event_id never reappeared on the events queue"
+echo "  same eventId observed after recovery: $event_id"
+assert "publisher wallet balance after recovery" "30.00" "$(wallet_state "$competingWallet")"
 
 echo ""
 echo "=== TEST H: restart with data while a reference is still pending"
@@ -248,6 +320,8 @@ assert "refund now processed" "PROCESSED" "$st"
 assert "ledger rows after cross-channel conclusion" "3" "$(ledger_count "$hWallet")"
 assert "reconciliation after pending reference" "true" "$(consistent "$hWallet")"
 
-rm -f /tmp/fault-wager-$runId.json /tmp/fault-h-$runId.json
+rm -f /tmp/fault-wager-$runId.json /tmp/fault-h-$runId.json /tmp/fault-h-bet-$runId.json
+# Drill windows were already restored after each kill; the EXIT trap covers
+# early failures and Ctrl-C.
 echo ""
-echo "faults OK: kill-9 with in-flight wager, kill with unacknowledged outbox and restart with pending reference all account exactly once."
+echo "faults OK: kill-9 after commit before delete (redelivery replays once), kill-9 after publish before ack (same eventId redelivered, outbox drained) and restart with pending reference all account exactly once."

@@ -56,15 +56,20 @@ erros `sendMessage/Receive` com backoff.
 
 **Resposta:** `docker compose restart localstack`; as réplicas só voltam a
 servir com o broker saudável (readiness 503 até lá). **Limitação real do
-ambiente de desenvolvimento:** o LocalStack Community não tem persistência
-(eventos JÁ publicados antes do restart são perdidos do broker e as filas
-renascem vazias; o sistema então exige um reinício das réplicas para
-re-provisionar as filas). O banco de outbox permanece auditável; republicação
-automática desses eventos não é o desenho — a garantia at-least-once cobre
-perdas ANTES do ack, não a perda do armazenamento do broker depois. Em
-produção com SQS gerenciado essa classe de perda não existe (durabilidade do
-serviço). Não afirmar "não há perda" ao reiniciar o broker de desenvolvimento.
-Conferir §4 para o caso de eventos pendentes (pré-ack).
+ambiente de desenvolvimento, verificada empiricamente em 13/10/2026:** o
+LocalStack Community não tem persistência (`PERSISTENCE=1` não persiste filas
+na edição Community — restart de prova apagou a fila; persistência é recurso
+Pro). Ensaio com registros antes/depois: 2 eventos publicados e confirmados na
+outbox (`published_at` preenchido) e visíveis na fila → restart somente do
+LocalStack → `ListQueues` vazio, readiness 503, banco intacto → restart das
+APIs → filas recriadas, readiness 200, **fila de eventos com 0 mensagens: os
+2 eventos publicados foram perdidos do broker**. O banco de outbox permanece
+auditável; republicação automática desses eventos não é o desenho — a
+garantia at-least-once cobre perdas ANTES do ack, não a perda do armazenamento
+do broker depois. Em produção com SQS gerenciado essa classe de perda não
+existe (durabilidade do serviço). Não afirmar "não há perda" ao reiniciar o
+broker de desenvolvimento. Conferir §4 para o caso de eventos pendentes
+(pré-ack).
 
 ## 4. Outbox acumulada
 

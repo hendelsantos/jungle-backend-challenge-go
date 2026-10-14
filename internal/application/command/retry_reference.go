@@ -37,6 +37,12 @@ type RetryReferenceDeps struct {
 	// ReferenceBackoff spaces retries of an still-missing reference;
 	// zero falls back to an exponential schedule capped at 5 minutes.
 	ReferenceBackoff func(attempt int) time.Duration
+	// OnConclusion, when set, is invoked once per pending reference that
+	// reaches a terminal status inside the committed unit of work (resumed
+	// PROCESSED/REJECTED or rejected by TTL). Reschedules never trigger it:
+	// the metric sink (e.g. jungle_wager_operations_total) counts exactly one
+	// durable conclusion per operation across channels.
+	OnConclusion func(kind wagering.Kind, status wagering.Status)
 }
 
 // RetryDueReferences processes up to limit due pending references, one
@@ -133,7 +139,16 @@ func (d RetryReferenceDeps) resumeOne(ctx context.Context, ttl time.Duration) (b
 		if err := d.Wagers.UpdateWagerTransaction(ctx, transaction.Snapshot(), schedule); err != nil {
 			return false, err
 		}
-		return false, d.insertRejectedEvent(ctx, transaction.Snapshot(), now)
+		if err := d.insertRejectedEvent(ctx, transaction.Snapshot(), now); err != nil {
+			return false, err
+		}
+		// Best-effort signal after the last write of the unit of work: a
+		// commit failure here rolls everything back and the next claim
+		// retries — the counter approximates, never drives, the ledger.
+		if d.OnConclusion != nil {
+			d.OnConclusion(item.State.Request.Kind, wagering.Rejected)
+		}
+		return false, nil
 	}
 
 	locked, err := d.Wallets.LockWallet(ctx, item.State.Request.WalletID)
@@ -196,7 +211,15 @@ func (d RetryReferenceDeps) resumeOne(ctx context.Context, ttl time.Duration) (b
 	if err := d.insertOutcomeEvents(ctx, snapshot, locked, w.Snapshot(), now); err != nil {
 		return false, err
 	}
-	return false, d.Wagers.UpdateWagerTransaction(ctx, snapshot, schedule)
+	if err := d.Wagers.UpdateWagerTransaction(ctx, snapshot, schedule); err != nil {
+		return false, err
+	}
+	// Best-effort signal after the last write of the unit of work (same
+	// approximation as the expiry path above).
+	if d.OnConclusion != nil {
+		d.OnConclusion(snapshot.Request.Kind, snapshot.Status)
+	}
+	return false, nil
 }
 
 // resolveReference loads the referenced operation scoped to the provider.

@@ -1,68 +1,77 @@
-import { Rate } from 'k6/metrics';
+import { Rate, Counter } from 'k6/metrics';
 
-// Technical-only error rate: business 422/409 never count here.
+// Technical-only error rate: business 422/409 and contract 4xx never count
+// here. Every classified response feeds the rate exactly once (add(true) for
+// technical failures, add(false) otherwise), so the denominator is the total
+// number of classified operations — never the number of failures.
 export const technicalErrorRate = new Rate('financial_technical_error_rate');
 
-// Response classifier: separates legitimate financial outcomes from
-// technical failures. A 422 with INSUFFICIENT_FUNDS (or any other persisted
-// failure code) is business behavior, never infrastructure error.
-const counters = {
-  processed: { label: 'financial_ops_processed', value: 0 },
-  rejected: { label: 'financial_ops_rejected', value: 0 },
-  replays: { label: 'financial_ops_replays', value: 0 },
-  conflicts: { label: 'financial_ops_conflicts', value: 0 },
-  technical: { label: 'technical_errors', value: 0 },
-  timeouts: { label: 'request_timeouts', value: 0 },
+// Class counters are k6 metrics: they aggregate across VUs and into the
+// end-of-test summary (plain JS objects are per-VU and cannot do this).
+export const counters = {
+  processed: new Counter('financial_ops_processed'),
+  rejected: new Counter('financial_ops_rejected'),
+  replays: new Counter('financial_ops_replays'),
+  conflicts: new Counter('financial_ops_conflicts'),
+  contract: new Counter('financial_ops_contract_rejections'),
+  technical: new Counter('technical_errors'),
+  timeouts: new Counter('request_timeouts'),
 };
 
-function bump(name) {
-  if (counters[name]) counters[name].value += 1;
-}
+// kindToCounter maps each returned class to its counter key (kept explicit so
+// a mismatch can never throw inside a VU).
+const kindToCounter = {
+  processed: counters.processed,
+  replay: counters.replays,
+  rejected: counters.rejected,
+  conflict: counters.conflicts,
+  contract: counters.contract,
+  technical: counters.technical,
+};
 
 // classify inspects status and body and returns one of:
-//   processed | replay | rejected | conflict | technical
-// k6 stamps error_code on any non-2xx (0/1400/1500), so the classifier must
-// look at the HTTP status itself, not at k6's error hints.
-function classify(res) {
+//   processed | replay | rejected | conflict | contract | technical
+// It records the response exactly once: one rate sample and one counter bump.
+// Callers must classify each response a single time (the helpers below
+// classify inside the helper and return the class; scenarios must not
+// classify again). k6 stamps error_code on any non-2xx (0/1400/1500), so the
+// classifier looks at the HTTP status itself, not at k6's error hints.
+export function classify(res) {
   const message = res.error ? String(res.error) : '';
   if (res.status === 0 || res.status >= 500) {
-    if (message.includes('timeout')) bump('timeouts');
-    bump('technical');
+    if (message.includes('timeout')) counters.timeouts.add(1);
+    counters.technical.add(1);
     technicalErrorRate.add(1);
     return 'technical';
   }
-  if (res.status === 422) {
-    bump('rejected');
-    return 'rejected';
-  }
-  if (res.status === 409) {
-    bump('conflicts');
-    return 'conflict';
-  }
-  if (res.status >= 200 && res.status < 300) {
+  let kind;
+  if (res.status === 422) kind = 'rejected';
+  else if (res.status === 409) kind = 'conflict';
+  else if (res.status >= 200 && res.status < 300) {
     const body = res.json ? res.json() : {};
-    if (body && body.idempotentReplay === true) {
-      bump('replays');
-      return 'replay';
-    }
-    bump('processed');
-    return 'processed';
+    kind = body && body.idempotentReplay === true ? 'replay' : 'processed';
+  } else {
+    // Remaining 4xx: the request never satisfied the contract (400/401/403/
+    // 404). It is not an infrastructure failure, but it is not a legitimate
+    // financial outcome either — it signals a malformed or unauthorized call.
+    kind = 'contract';
   }
-  bump('technical');
-  return 'technical';
-}
-
-export { counters, classify };
-
-// noteTechnical records a request as a technical failure when status,
-// error code or network error suggest something outside business rules.
-export function noteTechnical(res) {
-  const kind = classify(res);
+  kindToCounter[kind].add(1);
+  technicalErrorRate.add(0);
   return kind;
 }
 
-// financialOutcome collapses the four terminal-ish flows into thresholds use.
-export function financialOutcome(res) {
-  const k = classify(res);
-  return k === 'processed' || k === 'replay' || k === 'rejected' || k === 'conflict' ? k : 'technical';
+// noteTechnical feeds ONLY the technical-error rate (and the technical
+// counters) for auxiliary calls — token fetches, wallet openings and reads —
+// without polluting the per-class financial operation counters.
+export function noteTechnical(res) {
+  const message = res.error ? String(res.error) : '';
+  if (res.status === 0 || res.status >= 500) {
+    if (message.includes('timeout')) counters.timeouts.add(1);
+    counters.technical.add(1);
+    technicalErrorRate.add(1);
+    return 'technical';
+  }
+  technicalErrorRate.add(0);
+  return 'ok';
 }

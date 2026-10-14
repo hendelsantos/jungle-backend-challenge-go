@@ -515,3 +515,13 @@ e a demonstração com três instâncias estão em `scripts/fault.sh` e
 - **Gargalos observados (com evidência):** além do pool, o publisher de outbox não acompanha produção extrema (100 VUs geram ~700 ev/s de pico; com 1 worker por réplica o dreno isolado mediu 147,7 ev/s). Com 3 workers por réplica, o dreno medido (408–421 ev/s) passa a acompanhar a produção moderada. Alternativas rejeitadas: cache de saldo em memória (corretude não aceita), verificação check-then-act fora do banco (perde para os índices únicos) e OTel distribuído (diferencial opcional; fora do escopo do prazo).
 - **Próximos passos em produção (fora do escopo do desafio):** alertas contínuos em `jungle_outbox_*` e divergências, dashboards com esses regimes, pool dimensionado por load-test em hardware dedicado, segredos em vault com rotação, revisão de incidentes e runbook ensaiado.
 
+
+## Checkpoint das correções locais (13/10/2026)
+
+Os cenários k6 agora possuem thresholds para reprovar checks falhos e usam
+contadores agregados; as expectativas monetárias usam BigInt. O soak usa
+`constant-vus` com duração configurada. Isso não atualiza os resultados das
+campanhas anteriores. As pausas `JUNGLE_TEST_POST_COMMIT_PAUSE` e
+`JUNGLE_TEST_PUBLISH_ACK_PAUSE` destinam-se aos ensaios de interrupção e ficam
+vazias na operação normal. A conformidade permanece parcial; ver os limites
+registrados em [CONFORMIDADE_DESAFIO.md](docs/CONFORMIDADE_DESAFIO.md).

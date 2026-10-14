@@ -1,7 +1,8 @@
-// Cenário D — idempotência sob carga: one wallet with 100.00, fifty
-// simultaneous identical requests (same Idempotency-Key, same payload).
-// Expected: one processed answer, forty-nine idempotent replays reporting the
-// stored result, final balance 50.00, exactly one debit in the ledger.
+// Cenário D — idempotência sob carga: one wallet, N simultaneous identical
+// requests (same Idempotency-Key, same payload). Expected: one processed
+// answer, N-1 idempotent replays reporting the stored result, final balance
+// opening-amount, exactly one debit in the ledger. Every expectation is
+// computed from the configuration with exact decimal arithmetic.
 import http from 'k6/http';
 import { check } from 'k6';
 import exec from 'k6/execution';
@@ -10,7 +11,7 @@ import { waitForBarrier } from '../helpers/barrier.js';
 import { openWallet, balance, reconciliation, ledgerRows } from '../helpers/wallet.js';
 import { sendWager } from '../helpers/wager.js';
 import { uuid4 } from '../helpers/ids.js';
-import { counters, classify } from '../helpers/classify.js';
+import { subAmounts } from '../helpers/money.js';
 
 export const options = {
   scenarios: {
@@ -27,6 +28,8 @@ export const options = {
     // reflects contention, not sustained capacity.
     'http_req_duration{endpoint:process-wager}': ['p(95)<2000'],
     'financial_technical_error_rate': ['rate<0.05'],
+    // The financial gate: ANY failed check fails the whole run (exit != 0).
+    checks: ['rate==1.0'],
   },
 };
 
@@ -47,30 +50,28 @@ export default function (data) {
     roundId: `idem-r-${data.runId}`, amount: config.idempotencyAmount,
     externalId: data.key, idempotencyKey: data.key, scenarioTag: 'idempotency',
   });
-  const kind = classify(result.res);
   check(result.res, {
-    'no technical errors under identity race': (r) => kind !== 'technical',
-    'every answer reports PROCESSED': (r) => r.status === 200 && result.body.status === 'PROCESSED',
-  });
-  check(result.body, {
+    'no technical errors under identity race': () => result.kind !== 'technical',
+    'every answer reports PROCESSED': () => result.res.status === 200 && result.body.status === 'PROCESSED',
     'transaction identifier present': () => !!result.body.transactionId,
   });
 }
 
 export function teardown(data) {
+  // Exactly one debit of the configured amount must be visible, regardless of
+  // how many identical requests raced.
+  const expectedBalance = subAmounts(config.idempotencyOpening, config.idempotencyAmount);
   const finalBalance = balance(data.walletId, 'idempotency-teardown');
-  check(finalBalance, { 'idempotency final balance is 50.00': (b) => b === '50.00' })
-    || console.error(`idempotency BALANCE MISMATCH: got ${finalBalance}`);
+  check(finalBalance, { 'final balance is opening minus one debit': (b) => b === expectedBalance })
+    || console.error(`idempotency BALANCE MISMATCH: got ${finalBalance}, want ${expectedBalance}`);
   const rows = ledgerRows(data.walletId, 'idempotency-teardown');
   check(rows, { 'ledger: opening credit + one debit = 2 rows': (n) => n === 2 })
     || console.error(`idempotency LEDGER MISMATCH: got ${rows}`);
   // The "exactly one transaction identity" proof belongs to the independent
-  // Go verifier (cmd/verifywallet): fifty answers must persist exactly one
+  // Go verifier (cmd/verifywallet): N answers must persist exactly one
   // wager_transactions row beyond the opening.
   const recon = reconciliation(data.walletId, 'idempotency-teardown');
-  check(recon, { 'reconciliation consistent': (r) => recon.json().consistent === true })
+  check(recon, { 'reconciliation consistent': (r) => r.status === 200 && recon.json().consistent === true })
     || console.error(`idempotency RECON MISMATCH: ${recon.body}`);
-  console.info(`idempotency counters: processed=${counters.processed.value} replays=${counters.replays.value} technical=${counters.technical.value}`);
-  if (counters.technical.value > 0) console.error('idempotency saw TECHNICAL errors');
-  void config;
+  console.info('idempotency done; per-class counters aggregate in the k6 summary (financial_ops_*, technical_errors)');
 }

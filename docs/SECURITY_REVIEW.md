@@ -35,9 +35,34 @@
 Mensagens SQS **não são autenticação**: o consumidor valida a assinatura HMAC
 e vincula a assinatura ao `providerId` do corpo; ainda com produtor falso, as
 suas regras do domínio restringem o alcance (nunca `OPENING`; escopos
-player/wallet/round/valor/moeda verificados). O enunciado requer produtor
-autorizado via credenciais de fila; LocalStack Community não prova IAM —
-limitação de dev documentada.
+player/wallet/round/valor/moeda verificados).
+
+**Autorização do broker (limitação verificada em 13/10/2026).** O enunciado
+requer acesso à mensageria controlado por credenciais e políticas do broker
+(§2). No ambiente local isso **não é demonstrável**: LocalStack Community
+4.14.0 não avalia IAM — sondas registraram HTTP 200 para `ListQueues`,
+`SendMessage`, `ReceiveMessage` e `DeleteQueue` **sem header `Authorization`**
+e com **assinatura forjada**, e `ENFORCE_IAM=1` não altera esse resultado
+(enforcement de IAM é recurso Pro, conforme a documentação oficial do
+LocalStack). Mitigações efetivas no ambiente de desenvolvimento: (1) o broker
+é publicado somente em `127.0.0.1` (loopback), inalcançável de fora da
+máquina; (2) a assinatura HMAC por provedor impede que uma mensagem forjada
+produza efeito financeiro, mesmo que alguém a insira na fila; (3) a inbox
+persistente impede efeito duplo de mensagens reinseridas.
+
+**Camada de produção (artefato verificável, não testado localmente).** A
+aplicação autentica no broker pela cadeia de credenciais AWS
+padrão do SDK, sem fallback para `test/test` (ambiente, perfis e roles).
+O Compose local fornece o par fictício explicitamente; isso não habilita IAM
+no LocalStack Community. As políticas IAM de menor privilégio por papel —
+produtor só envia à fila de entrada, consumidor só recebe/apaga/altera
+visibilidade da entrada e envia à DLQ, publisher só publica na fila de
+eventos, administração separada — e a política de recurso das filas com
+`Deny` a qualquer principal não designado estão versionadas em
+[`deployments/sqs/iam-policies.json`](../deployments/sqs/iam-policies.json).
+Verificação prevista em AWS real (`aws iam simulate-principal-policy` ou
+LocalStack Pro); **não alegamos que essa política foi testada no ambiente
+local.**
 
 **Credenciais do cliente (incremento de 13/10/2026).** O adaptador usa a cadeia
 padrão do SDK AWS, sem fallback para `test/test`. O Compose, a CI e os comandos

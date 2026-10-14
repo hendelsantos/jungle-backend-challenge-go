@@ -23,6 +23,8 @@ type Config struct {
 	LogLevel                slog.Level
 	DatabaseURL             string
 	OutboxWorkers           int
+	TestPostCommitPause     time.Duration
+	TestPublishAckPause     time.Duration
 	PGPoolMaxConns          int
 	OIDCIssuer              string
 	OIDCAudience            string
@@ -88,6 +90,26 @@ func LoadConfig() (Config, error) {
 		if err := (oidcauth.Config{Issuer: cfg.OIDCIssuer, Audience: cfg.OIDCAudience}).Validate(); err != nil {
 			return Config{}, err
 		}
+	}
+	if text := os.Getenv("JUNGLE_TEST_POST_COMMIT_PAUSE"); text != "" {
+		d, err := time.ParseDuration(text)
+		if err != nil {
+			return Config{}, fmt.Errorf("JUNGLE_TEST_POST_COMMIT_PAUSE must be a duration up to 1m: %w", err)
+		}
+		if d < 0 || d > time.Minute {
+			return Config{}, fmt.Errorf("JUNGLE_TEST_POST_COMMIT_PAUSE must be a duration up to 1m, got %s", d)
+		}
+		cfg.TestPostCommitPause = d
+	}
+	if text := os.Getenv("JUNGLE_TEST_PUBLISH_ACK_PAUSE"); text != "" {
+		d, err := time.ParseDuration(text)
+		if err != nil {
+			return Config{}, fmt.Errorf("JUNGLE_TEST_PUBLISH_ACK_PAUSE must be a duration up to 1m: %w", err)
+		}
+		if d < 0 || d > time.Minute {
+			return Config{}, fmt.Errorf("JUNGLE_TEST_PUBLISH_ACK_PAUSE must be a duration up to 1m, got %s", d)
+		}
+		cfg.TestPublishAckPause = d
 	}
 	if text := os.Getenv("OUTBOX_WORKERS"); text != "" {
 		n, err := strconv.Atoi(text)

@@ -174,3 +174,20 @@ completa aprovados (606 casos/subtestes, zero falhas/ignores). A primeira
 execução expôs a precondição de lease de 50 ms; incorporada a correção local
 com expiração controlada no banco e 20 repetições aprovadas.
 [Evidências, comandos e limites](audit/2026-10-13/sqs-credentials.md).
+
+### Checkpoint das correções locais — 13/10/2026
+
+As alterações de carga, métricas e instrumentação de falhas foram versionadas
+por solicitação do usuário, sem declarar fechamento da auditoria. Políticas
+IAM são exemplos não aplicados; perda de eventos no restart do broker local
+continua documentada. Pausas configuráveis não comprovam sozinhas as janelas
+exigidas: falta verificar commit/delete e publish/ack do evento-alvo, reentrega
+e tentativas. O callback `OnConclusion` ainda não está conectado no bootstrap
+e é chamado dentro da transação; não comprova contagem de conclusões duráveis.
+Soak e scripts de kill não foram reexecutados neste checkpoint.
+
+Verificações do checkpoint: `make check`, vet com tag integration, build,
+Compose, shell, documentação e sondas k6 aprovados (sonda negativa: exit 99
+esperado); `govulncheck@v1.9.0`: nenhuma vulnerabilidade encontrada. Integração
+com PostgreSQL, Keycloak e LocalStack reais, `-race -count=1`: 606
+casos/subtestes aprovados, zero falhas e zero casos ignorados.

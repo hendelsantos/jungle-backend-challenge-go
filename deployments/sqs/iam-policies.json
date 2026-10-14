@@ -1,0 +1,98 @@
+{
+  "_comment": "Least-privilege AWS IAM policies for the SQS broker roles, for production deployment. NOT locally verifiable: LocalStack Community does not evaluate IAM (ENFORCE_IAM is a Pro feature, verified empirically on 4.14.0 — unsigned and forged-signature requests are answered 200). Verify in AWS with `aws iam simulate-principal-policy` or in LocalStack Pro. ARNs use the challenge account/region placeholders (000000000000/us-east-1); substitute the real account. The application authenticates to the broker with the AWS credential chain (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, IRSA or instance role); see internal/adapters/sqs/sqs.go.",
+  "roles": {
+    "jungle-wager-producer": {
+      "comment": "External game providers (or their ingress service) may ONLY send to the intake FIFO. They cannot receive, delete or administer queues.",
+      "policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Sid": "SendWagersOnly",
+            "Effect": "Allow",
+            "Action": ["sqs:SendMessage"],
+            "Resource": ["arn:aws:sqs:us-east-1:000000000000:wager-transactions.fifo"]
+          },
+          {
+            "Sid": "DenyEverythingElseOnQueues",
+            "Effect": "Deny",
+            "Action": ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:ChangeMessageVisibility", "sqs:DeleteQueue", "sqs:CreateQueue", "sqs:SetQueueAttributes", "sqs:PurgeQueue"],
+            "Resource": "*"
+          }
+        ]
+      }
+    },
+    "jungle-wager-consumer": {
+      "comment": "The application replicas consuming the intake FIFO and dead-lettering permanently invalid envelopes.",
+      "policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Sid": "ConsumeIntake",
+            "Effect": "Allow",
+            "Action": ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:ChangeMessageVisibility", "sqs:GetQueueAttributes", "sqs:GetQueueUrl"],
+            "Resource": ["arn:aws:sqs:us-east-1:000000000000:wager-transactions.fifo"]
+          },
+          {
+            "Sid": "DeadLetterCopies",
+            "Effect": "Allow",
+            "Action": ["sqs:SendMessage", "sqs:GetQueueAttributes", "sqs:GetQueueUrl"],
+            "Resource": ["arn:aws:sqs:us-east-1:000000000000:wager-transactions-dlq.fifo"]
+          }
+        ]
+      }
+    },
+    "jungle-event-publisher": {
+      "comment": "The outbox publisher may ONLY publish integration events; it cannot consume or mutate any queue.",
+      "policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Sid": "PublishEventsOnly",
+            "Effect": "Allow",
+            "Action": ["sqs:SendMessage", "sqs:GetQueueUrl"],
+            "Resource": ["arn:aws:sqs:us-east-1:000000000000:wager-events.fifo"]
+          }
+        ]
+      }
+    },
+    "jungle-queue-admin": {
+      "comment": "Provisioning/operations role (CI or platform operator), separate from every runtime role.",
+      "policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Sid": "AdministerChallengeQueues",
+            "Effect": "Allow",
+            "Action": ["sqs:CreateQueue", "sqs:DeleteQueue", "sqs:SetQueueAttributes", "sqs:GetQueueAttributes", "sqs:ListQueues", "sqs:TagQueue", "sqs:UntagQueue"],
+            "Resource": ["arn:aws:sqs:us-east-1:000000000000:wager-*"]
+          }
+        ]
+      }
+    }
+  },
+  "queueResourcePolicy": {
+    "comment": "Resource policy attached to each queue: only the account's designated roles may act; every other principal is denied. This is the broker-side authorization layer that the HMAC message signature complements (different layers: broker access vs financial payload authenticity).",
+    "policy": {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Sid": "DenyNonDesignatedPrincipals",
+          "Effect": "Deny",
+          "Principal": "*",
+          "Action": "sqs:*",
+          "Resource": ["arn:aws:sqs:us-east-1:000000000000:wager-transactions.fifo", "arn:aws:sqs:us-east-1:000000000000:wager-transactions-dlq.fifo", "arn:aws:sqs:us-east-1:000000000000:wager-events.fifo"],
+          "Condition": {
+            "StringNotLike": {
+              "aws:PrincipalArn": [
+                "arn:aws:iam::000000000000:role/jungle-wager-producer",
+                "arn:aws:iam::000000000000:role/jungle-wager-consumer",
+                "arn:aws:iam::000000000000:role/jungle-event-publisher",
+                "arn:aws:iam::000000000000:role/jungle-queue-admin"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

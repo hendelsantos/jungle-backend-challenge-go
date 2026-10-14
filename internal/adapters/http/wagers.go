@@ -64,9 +64,13 @@ func (a API) processWager(w http.ResponseWriter, r *http.Request, id requestIden
 		return
 	}
 	if a.Fin != nil {
-		a.Fin.Operations.WithLabelValues(string(body.Kind), string(result.Status)).Inc()
+		// Semantics: Operations counts each durable conclusion exactly once;
+		// idempotent replays never count as a new financial effect (they are
+		// counted in Replays).
 		if result.IdempotentReplay {
 			a.Fin.Replays.Inc()
+		} else {
+			a.Fin.Operations.WithLabelValues(string(body.Kind), string(result.Status)).Inc()
 		}
 		a.Fin.Duration.WithLabelValues(string(body.Kind)).Observe(time.Since(start).Seconds())
 	}

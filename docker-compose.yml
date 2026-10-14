@@ -85,6 +85,9 @@ services:
       # pgxpool per-process default.
       PG_POOL_MAX_CONNS: ${JUNGLE_DELIVERY_PG_POOL_MAX_CONNS:-24}
       OUTBOX_WORKERS: ${JUNGLE_DELIVERY_OUTBOX_WORKERS:-3}
+      # Failure-drill windows (kill points), empty in normal operation.
+      JUNGLE_TEST_POST_COMMIT_PAUSE: ${JUNGLE_TEST_POST_COMMIT_PAUSE:-}
+      JUNGLE_TEST_PUBLISH_ACK_PAUSE: ${JUNGLE_TEST_PUBLISH_ACK_PAUSE:-}
       LOG_LEVEL: info
       DATABASE_URL: postgres://jungle:jungle-local@postgres:5432/jungle?sslmode=disable
       OIDC_ISSUER: http://keycloak:8080/realms/jungle

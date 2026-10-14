@@ -37,6 +37,11 @@ type Consumer struct {
 	ProviderKeys  ProviderKeys
 	// Metrics is optional; when present it counts redeliveries and DLQ copies.
 	Metrics *observability.FinancialMetrics
+	// PostCommitPause holds the consumer between the durable commit and the
+	// DeleteMessage broker call, creating an observable kill window for the
+	// failure drills. Test instrumentation only: zero in every production
+	// configuration.
+	PostCommitPause time.Duration
 	// PollWait is the long-poll wait in seconds (default 10).
 	PollWait int
 }
@@ -146,9 +151,23 @@ func (c *Consumer) handle(parent context.Context, message types.Message) {
 		c.changeVisibility(retryCtx, message, int32(1<<(count-1)))
 		return
 	}
+	if c.PostCommitPause > 0 {
+		time.Sleep(c.PostCommitPause)
+	}
+	// Semantics mirror the HTTP boundary: a durable conclusion counts once in
+	// Operations; business replays and inbox replays (redelivery of an already
+	// completed message) count only in Replays — never a second effect.
+	if c.Metrics != nil {
+		if result.Replay || result.InboxReplay {
+			c.Metrics.Replays.Inc()
+		} else {
+			c.Metrics.Operations.WithLabelValues(string(input.Wager.Kind), string(result.Status)).Inc()
+		}
+	}
 	if c.Logger != nil {
 		c.Logger.Info("wager message consumed",
 			"messageId", input.MessageID, "transactionId", result.TransactionID,
+			"providerId", input.Wager.ProviderID, "walletId", input.Wager.WalletID,
 			"status", result.Status, "inboxReplay", result.InboxReplay, "replay", result.Replay)
 	}
 	c.delete(ctx, message)
@@ -156,11 +175,11 @@ func (c *Consumer) handle(parent context.Context, message types.Message) {
 
 // deadLetter copies the message to the DLQ and deletes it from the intake
 // queue. The DLQ copy keeps the original body for inspection; the group id
-// preserves FIFO ordering semantics on the DLQ.
+// preserves FIFO ordering semantics on the DLQ. The Dlq counter increments
+// only after the broker confirms the copy: an attempt that fails is not
+// counted as an arrival (the automatic broker redrive never passes through
+// this counter either).
 func (c *Consumer) deadLetter(ctx context.Context, message types.Message, body []byte, cause error) {
-	if c.Metrics != nil {
-		c.Metrics.Dlq.Inc()
-	}
 	messageID := "unknown"
 	if message.MessageId != nil {
 		messageID = *message.MessageId
@@ -183,6 +202,9 @@ func (c *Consumer) deadLetter(ctx context.Context, message types.Message, body [
 		// again, or the redrive policy will move it after maxReceiveCount.
 		c.logError(fmt.Sprintf("dead-letter send failed for %s", messageID), err)
 		return
+	}
+	if c.Metrics != nil {
+		c.Metrics.Dlq.Inc()
 	}
 	if c.Logger != nil {
 		c.Logger.Warn("message dead-lettered", "messageId", messageID, "reason", failureCode(cause))

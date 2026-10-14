@@ -559,3 +559,13 @@ são injetadas em fronteiras reais do commit; não substituem interrupção lite
 de processos. Fila de eventos provisionada não significa publisher implementado.
 Métricas, dois publishers, reinícios, três processos e Compose de entrega ficam
 para os próximos incrementos.
+
+### Instrumentação de interrupções em revisão (13/10/2026)
+
+O Compose aceita pausas de teste entre commit/delete e publish/ack, de zero
+até um minuto, desativadas por padrão. A implementação atual usa `time.Sleep`,
+que não observa cancelamento durante a pausa; ela não altera o contrato
+financeiro e requer validação específica do lifecycle nos ensaios. O callback
+de métricas de referências ainda é chamado dentro da UnitOfWork e não está
+ligado ao bootstrap: é trabalho em andamento, não garantia de contagem após
+commit. Este checkpoint não encerra A03/A11.

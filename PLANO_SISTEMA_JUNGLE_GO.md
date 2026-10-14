@@ -1274,3 +1274,19 @@ completa aprovados (606 casos/subtestes, zero falhas/ignores). A primeira
 execução expôs a precondição de lease de 50 ms; incorporada a correção local
 com expiração controlada no banco e 20 repetições aprovadas.
 [Evidências, comandos e limites](docs/audit/2026-10-13/sqs-credentials.md).
+
+### Checkpoint das correções locais — 13/10/2026
+
+Versionamento solicitado pelo usuário das alterações pendentes: gates e
+classificação k6, aritmética BigInt nas expectativas, soak por duração,
+instrumentação para interrupções, métricas, exemplos IAM, runbook e scanner.
+Este checkpoint não encerra os achados da auditoria. A01/A02 seguem abertos;
+A03 exige reprodução das interrupções e validação das precondições; A11 exige
+conectar o callback de referências e contabilizar conclusões após o commit.
+Relatórios de desempenho anteriores não representam uma nova campanha.
+
+Verificações do checkpoint: `make check`, vet com tag integration, build,
+Compose, shell, documentação e sondas k6 aprovados (sonda negativa: exit 99
+esperado); `govulncheck@v1.9.0`: nenhuma vulnerabilidade encontrada. Integração
+com PostgreSQL, Keycloak e LocalStack reais, `-race -count=1`: 606
+casos/subtestes aprovados, zero falhas e zero casos ignorados.

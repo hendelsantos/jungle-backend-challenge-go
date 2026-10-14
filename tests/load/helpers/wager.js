@@ -1,12 +1,10 @@
-// Wager helpers: the provider identity sends the requested operation, and
-// every response is classified so legitimate rejections never pollute error
-// rates or thresholds.
+// Wager helpers: the provider identity sends the requested operation. Every
+// response is classified exactly once here (rate + counters) so scenarios
+// never double-count; the class is returned for scenario checks.
 import http from 'k6/http';
 import { config } from '../config.js';
 import { providerToken, authHeader } from './auth.js';
-import { noteTechnical, counters } from './classify.js';
-
-const headers = { 'Content-Type': 'application/json', Authorized: 'provider' };
+import { classify } from './classify.js';
 
 export function sendWager(params) {
   const { kind, playerId, walletId, roundId, amount, externalId, idempotencyKey, scenarioTag, referenceId } = params;
@@ -23,14 +21,8 @@ export function sendWager(params) {
     tags: { name: 'POST /wagering/transactions', kind, scenario: scenarioTag, endpoint: 'process-wager' },
     timeout: '10s',
   });
-  let body2 = {};
-  try { body2 = res.json(); } catch (e) { /* technical path */ }
-  const statusOfType = body2 && body2.status ? body2.status : '';
-  let finalType = '';
-  if (res.status === 422) finalType = 'rejected';
-  else if (res.status >= 500 || res.status === 0 || res.error_code) {
-    counters.technical.value += 1;
-    if (res.error && String(res.error).includes('timeout')) counters.timeouts.value += 1;
-  }
-  return { res, body: body2, statusOfType, finalType, externalId };
+  let bodyJson = {};
+  try { bodyJson = res.json(); } catch (e) { /* technical path: no JSON body */ }
+  const cls = classify(res);
+  return { res, body: bodyJson, kind: cls, externalId };
 }

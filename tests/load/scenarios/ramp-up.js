@@ -7,7 +7,6 @@ import { check } from 'k6';
 import exec from 'k6/execution';
 import { config, poolWalletFor } from '../config.js';
 import { openWallet } from '../helpers/wallet.js';
-import { classify } from '../helpers/classify.js';
 import { sendWager } from '../helpers/wager.js';
 import { uuid4 } from '../helpers/ids.js';
 
@@ -35,6 +34,8 @@ export const options = {
   thresholds: {
     'http_req_duration{endpoint:process-wager}': ['p(95)<500', 'p(99)<900'],
     'financial_technical_error_rate': ['rate<0.01'],
+    // The financial gate: ANY failed check fails the whole run (exit != 0).
+    checks: ['rate==1.0'],
   },
 };
 
@@ -65,9 +66,8 @@ export default function (data) {
     externalId, idempotencyKey: externalId, scenarioTag: 'ramp-up',
   });
 
-  const terminal = classify(result.res);
   check(result.res, {
-    'BET reached a terminal outcome': (r) => terminal !== 'technical' && (!!result.body.transactionId || terminal === 'technical'),
+    'BET reached a terminal outcome': () => result.kind !== 'technical',
   }) || console.error(`ramp unexpected status ${result.res.status}: ${result.res.body}`);
 }
 
