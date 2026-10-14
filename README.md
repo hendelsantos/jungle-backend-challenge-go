@@ -78,6 +78,8 @@ Encerre com `Ctrl+C` ou `SIGTERM`. O servidor aguarda requisições em andamento
 | `REFERENCE_TTL` | `24h` | Prazo máximo de espera por uma referência ausente; esgotado, a operação é rejeitada com `REFERENCE_NOT_FOUND` |
 | `REFERENCE_WORKER_INTERVAL` | `1s` | Intervalo de polling do worker de referências (ativo quando `DATABASE_URL` está definida) |
 | `SQS_ENDPOINT_URL` | vazia | Endpoint LocalStack, ex.: `http://localhost:4566`; habilita o consumidor e exige banco e chaves de produtores |
+| `SQS_CONSUMER_PROFILE` / `SQS_PUBLISHER_PROFILE` | vazios | Perfis AWS independentes do consumidor e publisher; vazios usam a cadeia padrão. Em ambiente com IAM, configure identidades restritas distintas |
+| `SQS_PROVISIONER_PROFILE` | vazio | Perfil exclusivo do comando administrativo `provision-sqs` |
 | `SQS_REGION` | `us-east-1` | Região do broker; credenciais vêm da cadeia padrão do SDK AWS |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | sem fallback | No ambiente local, fornecer explicitamente `test` / `test`; perfis e roles também são resolvidos pelo SDK |
 | `AWS_SESSION_TOKEN` | opcional | Token de credenciais temporárias; deixar vazio no exemplo local `test` / `test` |
@@ -128,7 +130,7 @@ O harness também cria registros de teste com identidades únicas. A aplicação
 
 A partir de um checkout limpo, um comando sobe o ambiente completo de entrega —
 PostgreSQL, job de migrations (golang-migrate), Keycloak com o realm `jungle`,
-LocalStack SQS, três réplicas independentes da aplicação e o gateway nginx —
+LocalStack SQS, job administrativo `provision-sqs`, três réplicas independentes da aplicação e o gateway nginx —
 isolado do ambiente de desenvolvimento por projeto e por portas de loopback:
 
 ```sh
@@ -157,6 +159,39 @@ Os logs por container comprovam as três réplicas na rota (`docker logs
 jungle-delivery-api-1|2|3`). As chaves SQS, segredos do Keycloak e credenciais
 do banco são exclusivos de desenvolvimento — nunca publicar o ambiente. Para
 zerar, `docker compose -f docker-compose.yml down -v`.
+
+## Provisionamento SQS separado
+
+A API não cria nem configura filas. `cmd/provision-sqs` usa a cadeia AWS do SDK
+Go v2 e cria/reconcilia DLQ, entrada e eventos FIFO. No Compose, o job termina
+com exit 0 antes das três APIs (`service_completed_successfully`); erro impede
+seu início. Reexecutar o comando preserva as filas e reconcilia os atributos.
+
+Para desenvolvimento fora do Compose de entrega, após subir `compose.dev.yaml`:
+
+```sh
+SQS_ENDPOINT_URL=http://localhost:4566 SQS_REGION=us-east-1 \
+AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_SESSION_TOKEN= \
+  go run ./cmd/provision-sqs
+```
+
+O runtime resolve URLs e valida FIFO, deduplicação explícita, redrive para a
+DLQ e visibilidade de 30s; infraestrutura ausente/incompatível impede startup.
+O consumidor consulta entrada/DLQ; o publisher consulta eventos com outro
+cliente SDK. Perfis explícitos permitem separar as identidades mesmo no mesmo
+processo Go. Perfis vazios preservam a cadeia padrão; dois clientes sem perfis
+distintos podem resolver a mesma identidade e não comprovam menor privilégio.
+As políticas de quatro papéis estão em `deployments/sqs/iam-policies.json`.
+
+O Compose LocalStack fornece identidades fictícias explícitas em configurações
+locais, sem arquivo de credenciais versionado. **LocalStack Community não aplica
+essas permissões**: separação do código não encerra A01. A perda de mensagens
+após restart continua A02; recriar filas exige reexecutar o provisionador e
+não recupera mensagens já confirmadas. Não remover volumes para recuperar.
+
+[Validação do incremento](docs/audit/2026-10-14/sqs-runtime.md): integração real,
+reprovisionamento preservando mensagens, smoke com três APIs e limite de
+durabilidade novamente reproduzido após restart do LocalStack.
 
 ## Testes de carga com k6
 

@@ -37,4 +37,5 @@ go.work.sum
 !/.env.example
 /bin/
 /references/backend-challenge-go/
+/deployments/sqs/local-runtime-credentials
 tests/load/results/

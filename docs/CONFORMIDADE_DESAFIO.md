@@ -12,7 +12,7 @@ As tabelas históricas abaixo não sobrepõem a matriz vigente.
 | Exigência | Implementação e evidência atual | Estado |
 | --- | --- | --- |
 | §2 OIDC externo e isolamento | Keycloak real, tokens inválidos/expirados/audience, roles, isolamento de replay/consulta; integração sem skips | Atendido nos ensaios |
-| §2 autorização do broker | Cadeia AWS sem fallback + HMAC; política Deny não aplicada no LocalStack; papéis separados apenas em templates | **Parcial — A01** |
+| §2 autorização do broker | Cadeia AWS sem fallback + HMAC; política Deny não aplicada no LocalStack; provisionador separado e dois clientes runtime; políticas ainda são templates no LocalStack | **Parcial — A01** |
 | §3 preservação de eventos em falhas | Pendentes durante indisponibilidade se recuperam; restart do broker perde mensagens aceitas após ACK | **Não atendido localmente — A02** |
 | §4 Go/Fx/PG/SQS/Compose/migrations | Build, vet, race, migrations reais; três processos independentes | Atendido nos ensaios |
 | §§5–6 Money, saldo, ledger e atomicidade | Centavos int64, overflow, constraints, append-only, rollback de saldo/ledger/outbox/inbox | Atendido nos ensaios |
@@ -54,12 +54,12 @@ Os caminhos de testes são reproduzíveis pelos comandos do [README](../README.m
 | §9: operações e consultas HTTP | Implementado na camada | Nove rotas oficiais expostas reutilizando `CreateWallet`/`ProcessWager`/queries; dinheiro em string, `Idempotency-Key` respeitada, respostas distinguíveis (400/401/403/404/409/422/202/503) documentadas no README e verificadas por integração real. Ver tabela abaixo. |
 | §9: reconciliação em visão consistente | Implementado na camada | `ReconcileWallet`, snapshot SQL, `query_integration_test.go` e endpoint interno verificado na integração HTTP e no smoke; divergência conta em `jungle_wallet_reconciliation_divergences_total`. Nunca corrige saldo automaticamente. |
 | §9: health público | Implementado na camada | `/health/live` e `/health/ready` públicos; ping PostgreSQL + três filas SQS. Integração remove fila real e verifica 503, sem detalhes internos. |
-| §§2, 10: SQS, FIFO, DLQ, redrive e controle de acesso | Implementado na camada | LocalStack Community 4.14.0 sem conta/token; três filas FIFO provisionadas no startup; redrive após três recebimentos, retry 1s/2s/4s, HMAC vinculado ao provedor. Integrações reais de DLQ, tentativas e assinatura. Deduplicação financeira permanece no PostgreSQL. |
+| §§2, 10: SQS, FIFO, DLQ, redrive e controle de acesso | Implementado na camada | LocalStack Community 4.14.0 sem conta/token; três filas FIFO provisionadas pelo job administrativo antes do startup; redrive após três recebimentos, retry 1s/2s/4s, HMAC vinculado ao provedor. Integrações reais de DLQ, tentativas e assinatura. Deduplicação financeira permanece no PostgreSQL. |
 | §§6.5, 10: inbox e consumidor transacional | Implementado na camada | `ConsumeWagerMessage` reutiliza `ProcessWager` e sua transação; SHA-256 dos bytes do envelope, conclusão no mesmo commit. Erro SQL na inbox reverte domínio/ledger/outbox; duplicata, identidade reescrita, perda da resposta de commit e reentrega testadas com broker/PG reais. Interrupção literal pendente. |
 | §11: publisher concorrente e recuperação da outbox | Implementado na camada | Publicação pós-commit: claim `SKIP LOCKED` com lease por token, backoff 1s→5min, ack/reschedule condicionados ao token, lease abandonado recuperado (`attempts=2`), republicação com mesmo `eventId` e payload do snapshot, dois/quatro publishers concorrentes sem duplicação, tudo com LocalStack FIFO e PostgreSQL reais (failpoint determinístico para o crash) e kill -9 das réplicas drenando o backlog pós-reinício (`scripts/fault.sh`). |
 | §§4, 10: shutdown e kills de workers | Implementado na camada | Lifecycle HTTP/pool/OIDC, worker de referências com cancelamento observável e lote em andamento commitando ou rolando back; consumidor SQS e publisher da outbox canceláveis. **Kills literais verificados**: `docker compose kill -s KILL api` nas três réplicas com aposta SQS em voo (reentrega sem débito duplicado), com eventos não confirmados na outbox (drenagem pós-reinício com mesmos eventIds) e reinício com PENDING_REFERENCE retomada (Testes E/F/H por `scripts/fault.sh`). |
 | §12: observabilidade | Implementado na camada | Logs JSON (`slog`) com correlationID por request e, no consumidor, messageId/transactionId/status/replay; `GET /metrics` expõe registro Prometheus dedicado: `jungle_wager_operations_total{kind,status}`, `idempotent_replays`, `idempotency_conflicts`, `processing_duration_seconds{kind}` (histograma), `db_retries_total{reason}`, `sqs_redeliveries_total`, `dlq_total`, `wallet_reconciliations_total`, `reconciliation_divergences_total` e o conjunto `jungle_outbox_*` (pendência/atraso sempre do banco, counters por processo). Sem labels de alta cardinalidade; verificadas no Compose de entrega com operações e replay reais. |
-| §§13, 15: migrations e ambiente reproduzível | Implementado na camada | Runner operacional `cmd/migrate` verificado com PostgreSQL real; `compose.dev.yaml` para testes e `docker-compose.yml` de entrega (app + migrate job + IdP + filas + gateway) subindo de checkout limpo, verificado nesta entrega com `docker compose up --build`; filas provisionadas pelo app; suíte de falhas (`scripts/smoke.sh`, `scripts/fault.sh`) contra o ambiente de entrega. |
+| §§13, 15: migrations e ambiente reproduzível | Implementado na camada | Runner operacional `cmd/migrate` verificado com PostgreSQL real; `compose.dev.yaml` para testes e `docker-compose.yml` de entrega (app + migrate job + IdP + filas + gateway) subindo de checkout limpo, verificado nesta entrega com `docker compose up --build`; filas provisionadas pelo comando administrativo; suíte de falhas (`scripts/smoke.sh`, `scripts/fault.sh`) contra o ambiente de entrega. |
 | §13: integração real e falhas | Implementado na camada | PostgreSQL, Keycloak e LocalStack reais: HTTP/SQS, inbox, retry/DLQ, reentrega, falhas injetadas de commit, falha publish/ack da outbox, três processos independentes (smoke) e kills literais com reinício/pendência (fault.sh). |
 | §15 (complemento): mensagem assinada reproduzível | Implementado na camada | `scripts/fault.sh` publica envelope assinado com `cmd/send-wager` no broker do Compose de entrega e valida consumo/reentrega após kill -9; smoke cobre a rota HTTP end-to-end. |
 
@@ -221,8 +221,9 @@ casos/subtestes aprovados, zero falhas e zero casos ignorados.
 
 [A matriz final de entrega](AUDITORIA_FINAL_ENTREGA.md) passa a concentrar o
 estado corrente. A01 permanece parcial: templates IAM revisados contra as
-chamadas, mas não aplicados; runtime usa uma identidade compartilhada para
-provisionamento/consumo/publicação. Controle HMAC não equivale a autorização SQS.
+chamadas, mas não aplicados. No incremento de retomada, o provisionamento foi
+separado do runtime e consumidor/publisher passaram a usar clientes e perfis
+independentes. Controle HMAC não equivale a autorização SQS.
 
 A03: E/F/H agora comprovados com SIGKILL nos pontos bloqueados e comparação de
 identidades/digest. A07: lock real, relógio defasado e TTL pós-lock passam. A09:
@@ -235,3 +236,9 @@ A04–A06/A08/A10: instrumentos, regressões e resultados atuais em
 A02 segue **não atendido no restart do broker**: 14 mensagens aceitas perdidas;
 publicações pendentes durante indisponibilidade temporária se recuperam.
 A01: envio anônimo aceito mesmo com política Deny e ENFORCE_IAM=1.
+
+Retomada do provisionamento: runtime sem criação/reparo de filas, perfis
+independentes e job administrativo validados; integração real com race:
+635 testes/subtestes, zero falhas/skips. Smoke aprovado em três APIs. Novo
+restart confirmou perda de 14 mensagens aceitas, portanto A02 permanece aberto.
+[Evidências deste incremento](audit/2026-10-14/sqs-runtime.md).

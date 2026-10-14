@@ -1351,3 +1351,33 @@ processos Go distintos coordenam dinheiro pelo PostgreSQL, não por mutex local.
 Perguntas: por que três processos precisam do mesmo lock SQL? Quando uma outbox
 publicada deixa de permitir recuperação automática? O que exit 0 após SIGTERM
 comprova e o que ainda exige um teste com requisição ativa?
+
+### A01 — provisionamento separado do runtime (14/10/2026)
+
+Retomada em HEAD `74ab41b`, main sincronizada, preservando alterações locais.
+`cmd/provision-sqs` cria/reconcilia filas; runtime somente consulta e valida.
+Consumer e publisher usam clientes AWS distintos e perfis configuráveis;
+Compose espera sucesso do job administrativo antes das três APIs. Os templates
+IAM agora concedem ao provisionador somente as quatro ações necessárias.
+Não há mudança em ProcessWager, Money, Wallet, Ledger ou compensações.
+
+Validação direcionada: configuração inválida, erros de autenticação/autorização
+simulados no contrato SDK, falha de rede e seleção independente de perfis.
+Integração real: filas ausentes, criação, segunda execução idempotente, runtime,
+atributos divergentes, reparo administrativo e readiness por fila removida.
+O smoke real passou com 50 duplicatas e cenário concorrente 80+80.
+A01 continua parcial no LocalStack, onde permissões não são aplicadas; A02
+continua aberto. A investigação MiniStack não autoriza declarar migração pronta.
+
+Conceitos Go: construtores propagam erros ao Fx antes do listener; context
+limita I/O; dois ponteiros para clientes SDK mantêm resolvedores de identidade
+independentes. Perguntas: por que erro no construtor impede startup? Por que dois
+clientes podem usar a mesma identidade? Por que readiness não deve criar filas?
+
+Fechamento da retomada: revisão das alterações locais, região padrão do comando
+alinhada à aplicação e regressão adicional de ausência de efeitos administrativos
+no runtime/preservação de mensagem no reprovisionamento. `make check`, build,
+vet integration, integração real com race (635 testes/subtestes, zero falhas ou
+skips), Compose com três APIs e smoke aprovados. Broker-recovery terminou em
+exit 2 por perda de 14 mensagens após restart; A01/A02 continuam pendentes.
+[Comandos, evidências e falhas iniciais](docs/audit/2026-10-14/sqs-runtime.md).

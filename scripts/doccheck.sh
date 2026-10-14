@@ -34,12 +34,12 @@ PYEOF
 [ $? -eq 0 ] || fail=1
 
 echo "== 2. Scripts e comandos referenciados existem"
-for script in scripts/smoke.sh scripts/fault.sh cmd/migrate cmd/verifywallet; do
+for script in scripts/smoke.sh scripts/fault.sh cmd/migrate cmd/verifywallet cmd/provision-sqs; do
   [ -e "$script" ] && echo "  ok: $script" || { echo "  MISSING: $script"; fail=1; }
 done
 
 echo "== 3. Variáveis de ambiente no .env.example vs config.go"
-for v in DATABASE_URL HTTP_ADDR LOG_LEVEL OIDC_ISSUER OIDC_AUDIENCE REFERENCE_TTL REFERENCE_WORKER_INTERVAL SQS_ENDPOINT_URL SQS_REGION SQS_PROVIDER_KEYS SQS_QUEUE_PREFIX PG_POOL_MAX_CONNS OUTBOX_WORKERS; do
+for v in DATABASE_URL HTTP_ADDR LOG_LEVEL OIDC_ISSUER OIDC_AUDIENCE REFERENCE_TTL REFERENCE_WORKER_INTERVAL SQS_ENDPOINT_URL SQS_REGION SQS_PROVIDER_KEYS SQS_QUEUE_PREFIX SQS_PROVISIONER_PROFILE SQS_CONSUMER_PROFILE SQS_PUBLISHER_PROFILE PG_POOL_MAX_CONNS OUTBOX_WORKERS; do
   grep -q "$v" .env.example && true || { echo "  .env.example missing: $v"; fail=1; }
 done
 echo "  env vars: OK"

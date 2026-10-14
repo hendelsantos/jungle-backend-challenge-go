@@ -34,7 +34,7 @@ type PublishAckPause time.Duration
 func newPublishAckPause(cfg Config) PublishAckPause { return PublishAckPause(cfg.TestPublishAckPause) }
 
 func newOutboxWorker(store *postgres.OutboxDeliveryRepository, managed *sqsadapter.ManagedClient, metrics *observability.OutboxMetrics, logger *slog.Logger, publishAckPause PublishAckPause) *workers.OutboxWorker {
-	deps := command.PublishOutboxDeps{Outbox: store, Publisher: &sqsadapter.EventPublisher{Client: managed.Client, QueueURL: managed.Queues.EventsQueueURL, Logger: logger}, Metrics: metrics, Logger: logger, PostSendPause: time.Duration(publishAckPause)}
+	deps := command.PublishOutboxDeps{Outbox: store, Publisher: &sqsadapter.EventPublisher{Client: managed.Publisher, QueueURL: managed.Queues.EventsQueueURL, Logger: logger}, Metrics: metrics, Logger: logger, PostSendPause: time.Duration(publishAckPause)}
 	return &workers.OutboxWorker{PublishNext: deps.PublishNext, Interval: time.Second, Logger: logger}
 }
 func registerOutboxMetrics(server *http.Server, store *postgres.OutboxDeliveryRepository, pool *pgxpool.Pool) {

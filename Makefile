@@ -6,6 +6,7 @@ run:
 build:
 	go build -trimpath -o bin/server ./cmd/server
 	go build -trimpath -o bin/migrate ./cmd/migrate
+	go build -trimpath -o bin/provision-sqs ./cmd/provision-sqs
 
 test:
 	go test ./...

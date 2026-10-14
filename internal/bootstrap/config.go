@@ -34,6 +34,8 @@ type Config struct {
 	SQSQueuePrefix          string
 	SQSEndpointURL          string
 	SQSRegion               string
+	SQSConsumerProfile      string
+	SQSPublisherProfile     string
 	SQSProviderKeys         sqsadapter.ProviderKeys
 }
 
@@ -132,6 +134,8 @@ func LoadConfig() (Config, error) {
 	cfg.SQSQueuePrefix = os.Getenv("SQS_QUEUE_PREFIX")
 	cfg.SQSEndpointURL = os.Getenv("SQS_ENDPOINT_URL")
 	cfg.SQSRegion = os.Getenv("SQS_REGION")
+	cfg.SQSConsumerProfile = os.Getenv("SQS_CONSUMER_PROFILE")
+	cfg.SQSPublisherProfile = os.Getenv("SQS_PUBLISHER_PROFILE")
 	if cfg.SQSRegion == "" {
 		cfg.SQSRegion = "us-east-1"
 	}

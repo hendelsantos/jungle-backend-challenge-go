@@ -510,7 +510,7 @@ o deadline da rota. SDK Go v2 usa endpoint explícito e a cadeia padrão de
 credenciais, sem substituir perfis ou roles por `test/test`. O Compose e os
 comandos locais fornecem esse par fictício explicitamente por ambiente.
 A resolução de credenciais é lazy: sem identidade disponível, a chamada SQS
-falha antes do envio; o provisionamento propaga a falha no startup.
+falha antes do envio; a descoberta de filas propaga a falha no startup.
 Testes do adaptador verificam ambiente, perfil compartilhado, endpoint de
 credenciais de container, token temporário e ausência de credenciais. Esses
 testes não comprovam IAM do broker: A01 permanece aberto até testar negações
@@ -553,10 +553,16 @@ mensagem/evento. Métricas continuam best-effort e nunca são prova de saldo.
 
 ### Limite operacional IAM (14/10/2026)
 
-`ManagedClient` compartilha uma identidade AWS entre provisionamento,
-readiness, consumidor e publisher. Os papéis de `deployments/sqs/iam-policies.json`
-são templates para separação futura, não a topologia de permissões já implantada.
-A01 continua parcial; falta demonstrar negação efetiva pelo broker.
+O comando `cmd/provision-sqs` é a única entrada administrativa. Reutiliza
+`ProvisionNamed` do adaptador; o runtime usa `ResolveNamed` e não chama
+CreateQueue/SetQueueAttributes/DeleteQueue. O job Compose deve concluir antes
+das APIs. `ManagedClient` contém dois clientes SDK: consumidor para entrada/DLQ
+e publisher para eventos, inclusive nas consultas de readiness. Perfis próprios
+são opcionais; vazios preservam a cadeia AWS sem fallback fictício.
+`context.WithTimeout` limita configuração/descoberta a 30s; erro de descoberta
+propaga pelo construtor Fx e impede abrir o listener. Readiness valida atributos,
+não só existência. As políticas são templates ainda não aplicados no LocalStack.
+A01 continua parcial; separação de funções não prova autorização no broker.
 
 ### Correções de lifecycle e observabilidade (14/10/2026)
 

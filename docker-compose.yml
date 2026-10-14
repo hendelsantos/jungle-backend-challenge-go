@@ -15,7 +15,7 @@ services:
       POSTGRES_PASSWORD: jungle-local
       POSTGRES_DB: jungle
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U jungle -d jungle"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U jungle -d jungle"]
       interval: 2s
       timeout: 2s
       retries: 30
@@ -68,6 +68,22 @@ services:
       interval: 2s
       timeout: 3s
       retries: 60
+  provision-sqs:
+    image: ${JUNGLE_IMAGE:-jungle-backend-go:delivery}
+    build:
+      context: .
+      args:
+        GO_BUILD_TAGS: ${JUNGLE_BUILD_TAGS:-}
+    restart: "no"
+    depends_on:
+      localstack:
+        condition: service_healthy
+    environment:
+      SQS_ENDPOINT_URL: http://localstack:4566
+      SQS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: jungle-local-provisioner
+      AWS_SECRET_ACCESS_KEY: local-only-provisioner
+    entrypoint: ["/usr/local/bin/provision-sqs"]
   api:
     image: ${JUNGLE_IMAGE:-jungle-backend-go:delivery}
     build:
@@ -80,6 +96,8 @@ services:
       replicas: 3
     depends_on:
       migrate:
+        condition: service_completed_successfully
+      provision-sqs:
         condition: service_completed_successfully
       keycloak:
         condition: service_healthy
@@ -100,11 +118,15 @@ services:
       OIDC_AUDIENCE: jungle-api
       SQS_ENDPOINT_URL: http://localstack:4566
       SQS_REGION: us-east-1
-      # Explicit fictional credentials for this local broker only.
-      AWS_ACCESS_KEY_ID: test
-      AWS_SECRET_ACCESS_KEY: test
+      # Independent fictional SDK profiles; no administrative credential in runtime.
+      AWS_SHARED_CREDENTIALS_FILE: /etc/jungle/sqs-credentials
+      SQS_CONSUMER_PROFILE: jungle-consumer
+      SQS_PUBLISHER_PROFILE: jungle-publisher
       # Fictional local provider signing keys; never use outside development.
       SQS_PROVIDER_KEYS: '{"provider-a":"local-provider-a-signing-key-32-bytes-minimum","provider-b":"local-provider-b-signing-key-32-bytes-minimum"}'
+    configs:
+      - source: local-sqs-profiles
+        target: /etc/jungle/sqs-credentials
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health/live >/dev/null"]
       interval: 3s
@@ -123,3 +145,13 @@ services:
         condition: service_healthy
 volumes:
   jungle-postgres:
+configs:
+  local-sqs-profiles:
+    # Explicit fictional fixtures; never mount real credentials from the repo.
+    content: |
+      [jungle-consumer]
+      aws_access_key_id = jungle-local-consumer
+      aws_secret_access_key = local-only-consumer
+      [jungle-publisher]
+      aws_access_key_id = jungle-local-publisher
+      aws_secret_access_key = local-only-publisher

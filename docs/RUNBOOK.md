@@ -64,7 +64,7 @@ no ensaio. Não extrapolar esse resultado para outras versões ou planos.
 Ensaio com registros antes/depois: 2 eventos publicados e confirmados na
 outbox (`published_at` preenchido) e visíveis na fila → restart somente do
 LocalStack → `ListQueues` vazio, readiness 503, banco intacto → restart das
-APIs → filas recriadas, readiness 200, **fila de eventos com 0 mensagens: os
+APIs (runtime anterior, que também provisionava) → filas recriadas, readiness 200, **fila de eventos com 0 mensagens: os
 2 eventos publicados foram perdidos do broker**. O banco de outbox permanece
 auditável; republicação automática desses eventos não é o desenho — a
 recuperação da outbox cobre falhas ANTES do ack, não a perda do armazenamento
@@ -149,7 +149,7 @@ Não foi encontrada configuração gratuita funcional para a imagem 4.14.0 usada
 separa os casos: broker pausado → readiness 503 e dois eventos persistidos ainda
 pendentes → unpause → ambos publicados. Depois, 14 mensagens visíveis e 38
 outboxes publicadas → restart do broker → filas ausentes/readiness 503 → restart
-das APIs → readiness 200, zero mensagens e as mesmas 38 publicadas. **Exit 2**
+das APIs (runtime anterior, que também provisionava) → readiness 200, zero mensagens e as mesmas 38 publicadas. **Exit 2**
 é a reprovação de durabilidade esperada nesse ambiente; não é teste aprovado.
 Banco pausado também levou readiness a 503; unpause recuperou prontidão.
 
@@ -157,3 +157,22 @@ O gateway local não bloqueia tráfego com base na readiness. Uma dependência
 indisponível não implica que Compose vá parar/reiniciar APIs existentes.
 Recuperar publicação pendente é diferente de recuperar armazenamento perdido
 pelo broker após confirmação. Nenhuma garantia absoluta sobre AWS foi validada.
+
+## Provisionador SQS e falha de startup
+
+Inspecione `docker compose logs provision-sqs` e seu exit code. A dependência
+`service_completed_successfully` bloqueia novas APIs se o job falhar. Verifique
+endpoint, região e perfil administrativo antes de reexecutar:
+
+```sh
+docker compose run --rm --no-deps provision-sqs
+docker compose up -d api
+```
+
+Não conceda permissões administrativas ao runtime para contornar a falha.
+`SQS_CONSUMER_PROFILE` e `SQS_PUBLISHER_PROFILE` selecionam perfis próprios;
+`SQS_PROVISIONER_PROFILE` pertence ao comando administrativo. Sem perfis, o SDK
+resolve a cadeia padrão. O erro de AccessDenied deve ser tratado na política da
+identidade correspondente. A01 só fecha com negações reais no broker.
+Se as filas desapareceram no restart do LocalStack, o provisionador recria a
+infraestrutura, mas nenhuma mensagem perdida reaparece por esse procedimento.

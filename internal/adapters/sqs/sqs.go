@@ -3,6 +3,7 @@ package sqs
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -22,6 +23,8 @@ type Config struct {
 	EndpointURL string
 	Region      string
 	QueuePrefix string
+	// Profile selects an explicit SDK shared profile; empty keeps the default chain.
+	Profile string
 }
 
 func (c Config) Validate() error {
@@ -45,11 +48,15 @@ func NewClient(ctx context.Context, config Config) (*sqs.Client, error) {
 	if err := config.Validate(); err != nil {
 		return nil, err
 	}
-	awsCfg, err := awsconfig.LoadDefaultConfig(ctx,
+	options := []func(*awsconfig.LoadOptions) error{
 		awsconfig.WithRegion(config.Region),
 		awsconfig.WithHTTPClient(&http.Client{Timeout: 20 * time.Second}),
 		awsconfig.WithRetryMaxAttempts(2),
-	)
+	}
+	if config.Profile != "" {
+		options = append(options, awsconfig.WithSharedConfigProfile(config.Profile))
+	}
+	awsCfg, err := awsconfig.LoadDefaultConfig(ctx, options...)
 	if err != nil {
 		return nil, fmt.Errorf("sqs: load aws config: %w", err)
 	}
@@ -83,6 +90,10 @@ func Provision(ctx context.Context, client *sqs.Client) (Provisioned, error) {
 
 // QueueNames allows integration tests to own and delete isolated queues.
 type QueueNames struct{ Wager, DLQ, Events string }
+
+func (c Config) QueueNames() QueueNames {
+	return QueueNames{c.QueuePrefix + WagerQueueName, c.QueuePrefix + DLQQueueName, c.QueuePrefix + EventsQueueName}
+}
 
 func ProvisionNamed(ctx context.Context, client *sqs.Client, names QueueNames) (Provisioned, error) {
 	dlqURL, err := ensureFIFOQueue(ctx, client, names.DLQ, nil)
@@ -165,46 +176,77 @@ func queueARN(ctx context.Context, client *sqs.Client, url string) (string, erro
 // receiveTimeout bounds one long-poll call when the caller has no deadline.
 const receiveTimeout = 15 * time.Second
 
-// ManagedClient couples the SQS client with its provisioned queue URLs.
-// Provisioning happens during construction (fail-fast, like the database
-// ping): the application does not start serving without its queues.
+// ManagedClient owns two independent SDK clients. Runtime never administers queues.
 type ManagedClient struct {
 	*sqs.Client
-	Queues Provisioned
+	Publisher *sqs.Client
+	Queues    Provisioned
 }
 
-// NewManagedClient builds the client and provisions the queues, retrying
-// while the broker warms up (LocalStack containers take a few seconds).
-func NewManagedClient(ctx context.Context, config Config) (*ManagedClient, error) {
-	client, err := NewClient(ctx, config)
+// NewManagedClient resolves existing queues with each component's own identity.
+// Missing infrastructure or incompatible attributes prevent startup.
+func NewManagedClient(ctx context.Context, consumerConfig, publisherConfig Config) (*ManagedClient, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	client, err := NewClient(ctx, consumerConfig)
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	var queues Provisioned
-	for {
-		queues, err = ProvisionNamed(ctx, client, QueueNames{config.QueuePrefix + WagerQueueName, config.QueuePrefix + DLQQueueName, config.QueuePrefix + EventsQueueName})
-		if err == nil {
-			return &ManagedClient{Client: client, Queues: queues}, nil
-		}
-		if ctx.Err() != nil {
-			return nil, fmt.Errorf("sqs: provision queues: %w", err)
-		}
-		select {
-		case <-ctx.Done():
-			return nil, fmt.Errorf("sqs: provision queues: %w", ctx.Err())
-		case <-time.After(time.Second):
-		}
+	publisher, err := NewClient(ctx, publisherConfig)
+	if err != nil {
+		return nil, err
 	}
+	queues, err := ResolveNamed(ctx, client, publisher, consumerConfig.QueueNames())
+	if err != nil {
+		return nil, fmt.Errorf("sqs: resolve existing queues (run provision-sqs first): %w", err)
+	}
+	return &ManagedClient{Client: client, Publisher: publisher, Queues: queues}, nil
+}
+
+// ResolveNamed performs only GetQueueUrl/GetQueueAttributes, never writes.
+func ResolveNamed(ctx context.Context, consumer, publisher *sqs.Client, names QueueNames) (Provisioned, error) {
+	var q Provisioned
+	var err error
+	if q.DLQQueueURL, err = queueURL(ctx, consumer, names.DLQ); err != nil {
+		return q, err
+	}
+	if q.WagerQueueURL, err = queueURL(ctx, consumer, names.Wager); err != nil {
+		return q, err
+	}
+	if q.EventsQueueURL, err = queueURL(ctx, publisher, names.Events); err != nil {
+		return q, err
+	}
+	return q, (&ManagedClient{Client: consumer, Publisher: publisher, Queues: q}).Ready(ctx)
+}
+
+func fifoAttributes(ctx context.Context, client *sqs.Client, url string) (map[string]string, error) {
+	out, err := client.GetQueueAttributes(ctx, &sqs.GetQueueAttributesInput{QueueUrl: aws.String(url), AttributeNames: []types.QueueAttributeName{types.QueueAttributeNameAll}})
+	if err != nil {
+		return nil, err
+	}
+	if out.Attributes["FifoQueue"] != "true" || out.Attributes["ContentBasedDeduplication"] != "false" || out.Attributes["QueueArn"] == "" {
+		return nil, fmt.Errorf("sqs: incompatible FIFO attributes; run provision-sqs")
+	}
+	return out.Attributes, nil
 }
 
 // Ready probes all queues; the HTTP boundary reports only availability.
 func (c *ManagedClient) Ready(ctx context.Context) error {
-	for _, url := range []string{c.Queues.WagerQueueURL, c.Queues.DLQQueueURL, c.Queues.EventsQueueURL} {
-		if _, err := queueARN(ctx, c.Client, url); err != nil {
-			return err
-		}
+	dlq, err := fifoAttributes(ctx, c.Client, c.Queues.DLQQueueURL)
+	if err != nil {
+		return err
 	}
-	return nil
+	wager, err := fifoAttributes(ctx, c.Client, c.Queues.WagerQueueURL)
+	if err != nil {
+		return err
+	}
+	var policy struct {
+		Target string `json:"deadLetterTargetArn"`
+		Count  string `json:"maxReceiveCount"`
+	}
+	if json.Unmarshal([]byte(wager["RedrivePolicy"]), &policy) != nil || policy.Target != dlq["QueueArn"] || policy.Count != maxReceiveCount || wager["VisibilityTimeout"] != visibilitySecond {
+		return fmt.Errorf("sqs: incompatible redrive/visibility attributes; run provision-sqs")
+	}
+	_, err = fifoAttributes(ctx, c.Publisher, c.Queues.EventsQueueURL)
+	return err
 }

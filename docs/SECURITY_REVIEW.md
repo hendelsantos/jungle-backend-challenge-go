@@ -85,19 +85,20 @@ humana registrada e novo lançamento como trilha auditável.
 
 ## Revisão A01 — 14/10/2026
 
-Os papéis IAM são **templates, não configuração aplicada**. O runtime atual
-combina provisionamento, consumidor, publisher e readiness num único cliente
-AWS. Portanto, atribuir apenas o papel consumidor ao servidor impede seu
-startup; a separação administrativa/publisher exigirá composição e identidades
-próprias antes de produção. Não se afirma menor privilégio operacional.
+Os papéis IAM são **templates, não configuração aplicada no LocalStack**.
+Provisionamento foi separado em `cmd/provision-sqs`. O runtime usa dois clientes
+SDK com perfis opcionais independentes; o consumidor lê entrada/DLQ e o publisher
+lê/publica eventos. Nenhum deles cria/altera/exclui filas durante inicialização.
+O Compose local usa perfis fictícios distintos; isso não habilita IAM no broker.
 
-Revisão das chamadas: `cmd/send-wager` precisa de `GetQueueUrl` além de
-`SendMessage`; publisher/readiness precisa de `GetQueueAttributes`; administrador
-precisa de `GetQueueUrl` e `ListQueues` com `Resource: "*"`. Templates corrigidos
-conforme a [referência IAM do SQS](https://docs.aws.amazon.com/service-authorization/latest/reference/list_sqs.html).
-A resource policy de negação não concede permissões e não é provisionada pelo
-código. Avaliação de políticas no simulador IAM, isoladamente, também não prova
-acesso operacional ao SQS. Testes negativos reais continuam obrigatórios.
+O provisionador só precisa CreateQueue, SetQueueAttributes, GetQueueUrl e
+GetQueueAttributes sobre as três filas. DeleteQueue/PurgeQueue/ListQueues não
+são necessários. O produtor precisa GetQueueUrl e SendMessage na entrada;
+consumer recebe/exclui/altera visibilidade na entrada e envia à DLQ; publisher
+envia eventos. Os dois últimos consultam atributos/URLs somente das suas filas.
+A resource policy exemplificada não é aplicada pelo comando. Testes de contrato
+HTTP do SDK demonstram seleção de perfis/propagação de AccessDenied, sem serem
+prova de enforcement IAM real. A01 permanece parcial no LocalStack Community.
 
 ## Evidências da revisão final
 

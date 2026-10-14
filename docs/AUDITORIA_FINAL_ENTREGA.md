@@ -15,7 +15,7 @@ Fonte normativa: [enunciado preservado](reference/README_DESAFIO.md).
 
 | Achado | Estado | Implementação, evidência e limite |
 | --- | --- | --- |
-| A01 | **PARCIAL** | Cadeia AWS sem fallback, token temporário, perfis/roles e HMAC testados. Templates IAM corrigidos contra chamadas. Identidade runtime ainda compartilhada; autorização real falhou no broker local, inclusive sob Deny. Não testada em AWS/plano pago. |
+| A01 | **PARCIAL** | Cadeia AWS sem fallback, token temporário, perfis/roles e HMAC testados. Provisionamento separado em `cmd/provision-sqs`; runtime usa clientes/perfis independentes para consumidor e publisher. Templates IAM corrigidos contra chamadas. Autorização real falhou no broker local, inclusive sob Deny. Separar clientes não comprova aplicação de permissões; não testada em AWS/plano pago. |
 | A02 | **ABERTO** | Persistência+volume em Community 4.14.0 não preservaram fila. No Compose, 14 mensagens aceitas foram perdidas; 38 registros continuaram publicados. Dois eventos pendentes durante pausa recuperaram normalmente. Readiness 503/200 comprovada. |
 | A03 | **CORRIGIDO E TESTADO** | Build exclusiva faulttest; E/F bloqueiam no ponto crítico. SQL antes do SIGKILL; inbox replay com mesmo messageId; F com lease expirada naturalmente, attempts=2, eventId/digest iguais. H cruzando HTTP→SQS passou. |
 | A04 | **CORRIGIDO E TESTADO** | Todos os checks financeiros têm gate; negativos saem 99. Idempotência 2×1.00 e contenção com apenas duas apostas usam expectativas configuradas. SQL verifica todas as carteiras do runner. |
@@ -30,6 +30,10 @@ Fonte normativa: [enunciado preservado](reference/README_DESAFIO.md).
 | A13 | **CORRIGIDO E TESTADO** | govulncheck v1.9.0 concluiu sem vulnerabilidades reportadas. Gitleaks: 45 commits sem vazamentos detectados, com exceção exata de fixture fictícia. CI de 56d5d76 aprovado nos dois jobs, incluindo integração real. |
 
 ## Verificações executadas
+
+Incremento posterior de provisionamento separado: [evidências da retomada](audit/2026-10-14/sqs-runtime.md).
+A01 continua parcial; A02 continua aberto. A tabela abaixo preserva a campanha
+anterior; não confundir seus resultados com a nova execução.
 
 Infraestrutura real e exclusiva: `jungle-final-dev` (PostgreSQL :16432,
 Keycloak :18080, LocalStack :14566), `jungle-mission-1410-0515` (gateway :19080,
@@ -128,7 +132,7 @@ parecer atual. Nenhuma nota de avaliação foi inventada nesta revisão.
 ## Pendências e testes não executados
 
 - Autorização operacional com identidades separadas e broker que aplique IAM.
-  Templates não são implantação; runtime atual também provisiona filas.
+  Templates não são implantação; runtime agora apenas resolve filas e usa clientes separados.
 - Durabilidade do broker local após restart. Não demonstrada uma configuração
   gratuita compatível; nenhum serviço pago/AWS real foi autorizado ou usado.
 - Campanha de endurance de 15min nesta revisão, testes em AWS gerenciada,
@@ -153,7 +157,7 @@ execução naquele momento. A matriz final está no início deste documento.
 
 | Achado | Estado inicial | Constatação no HEAD |
 | --- | --- | --- |
-| A01 | PARCIAL | Cadeia AWS sem fallback e HMAC presentes; IAM é exemplo não aplicado; runtime também provisiona filas com o mesmo cliente. |
+| A01 | PARCIAL | Cadeia AWS sem fallback e HMAC presentes; IAM é exemplo não aplicado; runtime da base auditada também provisiona filas com o mesmo cliente. |
 | A02 | ABERTO | Compose sem persistência; outbox publicada não recupera perda posterior do broker. |
 | A03 | PARCIAL | Pausas de 12s não comprovam ack pendente; F pode observar só reentrega do primeiro envio; falta verificar SQL e logs por identidade. |
 | A04 | PARCIAL | Thresholds e BigInt presentes; contention calcula vencedores sem limitar ao número de apostas. |

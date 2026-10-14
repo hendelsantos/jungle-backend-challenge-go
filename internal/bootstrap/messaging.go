@@ -24,11 +24,13 @@ func messagingModule() fx.Option {
 }
 
 func newSQSClient(cfg Config) (*sqsadapter.ManagedClient, error) {
-	// Provision is idempotent and retries while the broker warms up; failing
-	// fast here mirrors the database ping: no queues, no serving.
-	return sqsadapter.NewManagedClient(context.Background(), sqsadapter.Config{
+	consumer := sqsadapter.Config{
 		EndpointURL: cfg.SQSEndpointURL, Region: cfg.SQSRegion, QueuePrefix: cfg.SQSQueuePrefix,
-	})
+		Profile: cfg.SQSConsumerProfile,
+	}
+	publisher := consumer
+	publisher.Profile = cfg.SQSPublisherProfile
+	return sqsadapter.NewManagedClient(context.Background(), consumer, publisher)
 }
 
 func newConsumeWagerDeps(
@@ -60,7 +62,7 @@ func newSQSConsumer(cfg Config, managed *sqsadapter.ManagedClient, consume comma
 	}
 }
 
-// registerSQSConsumer starts polling after the queues are provisioned and
+// registerSQSConsumer starts polling after the existing queues are validated and
 // stops it before the pool closes. Cancellation aborts the in-flight receive;
 // uncommitted work rolls back and the message redelivers safely.
 func registerSQSConsumer(lifecycle fx.Lifecycle, consumer *sqsadapter.Consumer, logger *slog.Logger) {

@@ -152,8 +152,9 @@ e PERSISTENCE=1. A outbox com published_at **não republica automaticamente**
 esses eventos. O ensaio de indisponibilidade pré-ACK comprovou recuperação;
 o de perda posterior comprovou uma limitação. Não alegar conformidade integral.
 
-Antes de produção: validar IAM real com papéis distintos e provisionamento
-separado; usar broker durável e testar negações por identidade; separar usuário
+O provisionamento já tem comando próprio; consumidor e publisher usam clientes
+SDK com perfis independentes. Antes de produção: validar IAM real com esses
+papéis; usar broker durável e testar negações por identidade; separar usuário
 SQL de migrations do runtime (Compose local usa o mesmo usuário administrativo);
 gerenciar/rotacionar chaves e tokens, usar TLS, testar backup/restauração e
 monitorar DLQ/redrive e métricas de cada réplica. Testar comportamento de

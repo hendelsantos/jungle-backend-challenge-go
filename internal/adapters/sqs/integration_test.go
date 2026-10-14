@@ -69,7 +69,7 @@ func newSQSFixture(t *testing.T) *sqsFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	managed := &sqsadapter.ManagedClient{Client: client, Queues: queues}
+	managed := &sqsadapter.ManagedClient{Client: client, Publisher: client, Queues: queues}
 	reader := postgres.NewWagerTransactionReader(pool)
 	consume := command.ConsumeWagerDeps{
 		UnitOfWork: postgres.NewUnitOfWork(pool),

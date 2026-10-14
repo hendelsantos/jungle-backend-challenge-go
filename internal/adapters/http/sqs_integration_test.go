@@ -29,6 +29,10 @@ func TestAuthenticatedHTTPAndSQSIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Administrative setup is explicit; Fx runtime must never create queues.
+	if _, err := sqsadapter.ProvisionNamed(t.Context(), client, (sqsadapter.Config{QueuePrefix: prefix}).QueueNames()); err != nil {
+		t.Fatal(err)
+	}
 	// Registered before the Fx fixture cleanup: workers stop before queue deletion.
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

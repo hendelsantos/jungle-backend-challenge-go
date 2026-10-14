@@ -59,6 +59,8 @@ for _ in range(60):
 else:raise RuntimeError('broker did not restart')
 readiness=request('/health/ready')[0]
 report('after-broker-restart',queues=queues,readiness=readiness)
+# Runtime no longer recreates lost infrastructure. Only the admin command may.
+dc('run','--rm','--no-deps','provision-sqs')
 dc('restart','api');wait_ready();drain()
 after=visible()
 assert sql('SELECT count(*) FROM outbox_events WHERE published_at IS NOT NULL')==published
