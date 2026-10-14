@@ -2,13 +2,38 @@
 
 Fonte normativa: [README original preservado](reference/README_DESAFIO.md), commit
 `bdd9e70b65db9b374ee070bd3a4768661a888997`; [procedência](reference/SOURCE.md).
-Revisão final de 13/10/2026 sobre a implementação completa (Fases 0–6; ver histórico das revisões anteriores abaixo).
+Revisão vigente: **14/10/2026**, implementação `56d5d76` e relatório
+[AUDITORIA_FINAL_ENTREGA.md](AUDITORIA_FINAL_ENTREGA.md). **NO-GO para
+conformidade integral:** A01/A02 permanecem pendentes no ambiente local.
+As tabelas históricas abaixo não sobrepõem a matriz vigente.
 
-**Estado após revisão independente: conformidade parcial, com achados abertos.** A [auditoria de 13/10/2026 sobre `e11e325`](AUDITORIA_INDEPENDENTE_2026-10-13.md) registra a matriz atual: autorização do broker (A01), durabilidade local (A02), prova das interrupções (A03), worker de referências (A07) e observabilidade (A09/A11) impedem manter a declaração irrestrita de conclusão. A nova revisão também documenta problemas nos testes e nas instruções. As evidências positivas anteriores continuam úteis, mas não encerram essas pendências.
+## Matriz vigente de requisitos
+
+| Exigência | Implementação e evidência atual | Estado |
+| --- | --- | --- |
+| §2 OIDC externo e isolamento | Keycloak real, tokens inválidos/expirados/audience, roles, isolamento de replay/consulta; integração sem skips | Atendido nos ensaios |
+| §2 autorização do broker | Cadeia AWS sem fallback + HMAC; política Deny não aplicada no LocalStack; papéis separados apenas em templates | **Parcial — A01** |
+| §3 preservação de eventos em falhas | Pendentes durante indisponibilidade se recuperam; restart do broker perde mensagens aceitas após ACK | **Não atendido localmente — A02** |
+| §4 Go/Fx/PG/SQS/Compose/migrations | Build, vet, race, migrations reais; três processos independentes | Atendido nos ensaios |
+| §§5–6 Money, saldo, ledger e atomicidade | Centavos int64, overflow, constraints, append-only, rollback de saldo/ledger/outbox/inbox | Atendido nos ensaios |
+| §7 cinco operações e compensação | BET/WIN/LOSS/REFUND/ROLLBACK, ADR 0001, códigos estáveis; integração real | Atendido nos ensaios |
+| §7 referências | Chegada posterior, TTL, lock real/relógio defasado, backoff e restart cruzando canais | Atendido nos ensaios |
+| §§8–9 concorrência e idempotência | Smoke: 50 duplicatas→1 débito/49 replays; 80+80 sobre100→saldo20/1 rejeição; três APIs; HTTP↔SQS real | Atendido nos ensaios |
+| §9 contratos/health/reconciliação | API autenticada, erros distintos, limites em bytes, snapshot, readiness 503 por PG/SQS | Atendido nos ensaios |
+| §§6.5/10 inbox e delete pós-commit | Transação única, replay real após SIGKILL na janela E, redrive à DLQ e shutdown | Atendido nos ensaios |
+| §11 outbox pós-commit e publishers | Claim/lease, backoff, concorrência; janela F: dois envios aceitos, eventId/hash idênticos e ACK na tentativa2 | Atendido, exceto perda pós-ACK do broker |
+| §12 observabilidade | Resultados HTTP/SQS/referências, replays, retry, DLQ/falhas, duração, backlog e divergências; collectors por handler | Atendido com counters best-effort por processo |
+| §13 testes reais e race | Gates versionados recusam skips; PostgreSQL, Keycloak e LocalStack reais | Atendido nos ensaios |
+| §15 reprodução e documentação | Checkout limpo de 56d5d76: migrations 4/clean, três APIs saudáveis, smoke/fault E/F/H e SIGTERM com exit 0; guia e runbook | Atendido nos ensaios; [evidência](audit/2026-10-14/README.md) |
+
+Opcional: carga implementada, com regressão curta e auditoria SQL. Partidas
+dobradas, tracing e dashboards não entregues. Usuário SQL de runtime separado
+não foi implantado no Compose; isso é limite operacional, não prova de menor
+privilégio em produção. Nenhum serviço pago/AWS real foi usado.
 
 ## Requisitos e evidências da revisão anterior
 
-A tabela abaixo preserva o registro anterior. Para o parecer vigente e as ressalvas por requisito, consultar a matriz da auditoria independente vinculada acima.
+A tabela abaixo preserva o registro anterior. Para o parecer vigente e as ressalvas por requisito, consultar a matriz atual acima e a auditoria final vinculada no início.
 
 “Implementado na camada” descreve código e testes existentes nessa camada. “Parcial”
 significa que falta uma parte do requisito ou sua demonstração no ambiente exigido.

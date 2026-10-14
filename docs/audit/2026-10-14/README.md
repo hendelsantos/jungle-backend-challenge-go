@@ -86,3 +86,59 @@ CI do incremento `17499c3`: [run 38534939043](https://github.com/hendelsantos/ju
 falhou no Gitleaks pela fixture acima; integração remota foi ignorada pela
  dependência desse job. A falha não foi mascarada: configuração de exceção
 restrita e nova execução serão verificadas no próximo commit.
+
+## Gates finais e checkout limpo
+
+Implementação `56d5d76`: `make check`, vet integration, unitários `-race -count=2`,
+integração real `-race -count=1` (627 testes/subtestes) e `-count=2` (1.254),
+Compose config e doccheck passaram. Integração: zero falhas e zero skips.
+Contagens incluem pais e subtestes; não equivalem a cenários independentes.
+Oito cenários k6 e SQL independente de todas as carteiras passaram; resultados
+em [load-results.json](load-results.json). Sonda negativa: exit 99 esperado;
+classificador: dois erros técnicos em 1.000 wagers e taxa auxiliar separada.
+
+Clone limpo de `56d5d76` em `/tmp/jungle-final-20261014/clean`; projeto
+`jungle-proof-1410-0535`, portas gateway 19180, IdP 19190, PG 19632, SQS 19670.
+Build/up sem volumes anteriores; migrations `4|f`. Imagem normal
+`jungle-backend-go:proof-1410`, PIDs 225989/226070/225883, todas saudáveis.
+Smoke antes e depois de fault aprovados. Segundo smoke: carteira de duplicidade
+`01a13993-4236-7a17-8b46-4b73368633cb`, 50 apostas idênticas = um efeito e 49
+replays; duas apostas conflitantes adicionais. Logs distribuídos nas APIs
+1/2/3: 17/15/20 requisições. Carteira do caso literal 80+80:
+`01a13993-4418-74ee-8f97-6deb08c8a8f0`, saldo 20.00, um débito/uma rejeição.
+
+Repetição limpa E: mensagem SQS `293252eb-ea7a-464d-bb60-897180de8b04`,
+transação `01a13990-b24b-7195-a8d6-b160eed51e78`; replay com receiveCount=3,
+saldo 75.00, dois lançamentos (abertura e BET), uma inbox, reconciliação true.
+F: evento `01a13991-4708-777d-a358-7d9a5fe516bb`, SQS
+`13ad039c-9c75-4372-8b30-85194db1d52c`, SHA-256
+`8c66757bbe16de0a20923eff66ad1c8a9f71244d0aa2c11a9dc624f2c315414a`.
+Primeiro envio aceito às 08:39:44 UTC; lease sem ACK até 08:40:14;
+SIGKILL e segundo envio às 08:40:15 UTC, attempts=2 e mesmo digest.
+Saldo 30.00, um lançamento, reconciliação true. FIFO retornou o mesmo ID
+por deduplicação; a prova é de dois envios aceitos, não de duas entregas.
+H: pendência preservada no restart, BET via SQS, REFUND concluído, saldo 100.00,
+três lançamentos e reconciliação true. Script encerrou com exit 0 e restaurou
+imagem normal; readiness 200.
+
+SIGTERM (`docker compose stop -t 30 api`) depois dos ensaios: três exit 0,
+OOM=false; hooks Fx de HTTP, OIDC, outbox, SQS, referências e banco concluídos.
+Evidências brutas locais: clean-smoke-final.log, clean-fault.log,
+clean-processes.txt, clean-shutdown.log e release-gates.log no diretório /tmp
+acima. São auxiliares temporários; esta síntese e os comandos são versionados.
+
+## CI e revisão final de segredos
+
+[CI de 56d5d76](https://github.com/hendelsantos/jungle-backend-challenge-go/actions/runs/38536103961):
+completed/success. Ambos os jobs passaram: qualidade/segredos/build/Compose e
+integração PostgreSQL+Keycloak+LocalStack. Isso sucede, sem apagar, a falha
+remota da fixture em 17499c3 descrita acima.
+
+Gitleaks reexecutado no histórico completo: 45 commits, no leaks found.
+Varredura de todo o diretório encontrou três alertas em resultados k6 locais
+ignorados (`tests/load/results/idempotency*.json`). Revisão estrutural confirmou
+`setup_data.key`, formato `idem-bet-<timestamp>`, gerado pelo teste de
+idempotência; não são segredos e não estão versionados. Nenhuma nova exceção
+foi criada. Revisão de caminhos versionados: nenhum .env, binário, resultado
+temporário de carga ou clone oficial. Scanner não constitui garantia absoluta
+contra toda forma de dado sensível.

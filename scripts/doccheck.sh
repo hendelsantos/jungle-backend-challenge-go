@@ -13,7 +13,9 @@ docs = ["README.md", "ARCHITECTURE.md", "PLANO_SISTEMA_JUNGLE_GO.md",
         "docs/CONFORMIDADE_DESAFIO.md", "docs/QA_RELATORIO_FINAL.md",
         "docs/PERFORMANCE_REPORT.md", "docs/ENGINEERING_EXCELLENCE_REPORT.md",
         "docs/RUNBOOK.md", "docs/SECURITY_REVIEW.md",
-        "docs/ARCHITECTURE_DIAGRAMS.md", "tests/load/README.md"]
+        "docs/ARCHITECTURE_DIAGRAMS.md", "tests/load/README.md",
+        "docs/AUDITORIA_FINAL_ENTREGA.md", "docs/GUIA_ENTREVISTA_JUNGLE.md",
+        "docs/audit/2026-10-14/README.md"]
 bad = 0
 for doc in docs:
     if not os.path.exists(doc):

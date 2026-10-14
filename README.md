@@ -2,11 +2,51 @@
 
 Solução do [desafio de processamento distribuído de apostas](https://github.com/junglegaming/backend-challenge-go) da Jungle Gaming: backend financeiro distribuído em Go com integridade demonstrável.
 
-**Estado: Fases 0–6 implementadas; auditoria independente com pendências obrigatórias abertas.** `ProcessWager` trata BET, WIN, LOSS, REFUND e ROLLBACK com lock por carteira, idempotência persistente e gravação de saldo, transação, ledger e outbox no mesmo commit. Os contratos HTTP oficiais estão expostos com autenticação OIDC (`client_credentials`), isolamento entre provedores e operações internas restritas; `GET /health/ready` verifica PostgreSQL e, quando configurado, SQS. Operações com referência ausente ficam `PENDING_REFERENCE` e um worker distribuído as retoma com backoff exponencial e TTL, concluindo, reagendando ou rejeitando com `REFERENCE_NOT_FOUND`. Eventos comprometidos são publicados pós-commit na fila de eventos por um publisher com claim/lease, backoff e republicação com mesmo `eventId`.
+**Parecer atual: NO-GO para conformidade integral.** O núcleo financeiro e os
+cenários de concorrência/recuperação passaram na regressão de 14/10/2026, mas o
+LocalStack Community 4.14.0 não aplicou autorização IAM e perdeu mensagens já
+aceitas após restart. A outbox recupera publicações pendentes; não recupera
+sozinha a perda posterior do armazenamento do broker. Sem AWS real ou plano
+pago autorizado, esses requisitos continuam pendentes.
 
-A [auditoria independente de 13/10/2026](docs/AUDITORIA_INDEPENDENTE_2026-10-13.md), sobre `e11e325`, atribuiu **80/100**, com três achados P1 e dez P2. Os testes E/F/H estão em `scripts/fault.sh`, mas as janelas de interrupção ainda precisam de comprovação controlada. O “GO” de [`docs/QA_RELATORIO_FINAL.md`](docs/QA_RELATORIO_FINAL.md) é histórico e deve ser lido com as ressalvas da nova revisão. `GET /metrics` (via gateway) expõe o registro Prometheus: operações por kind/status, replays idempotentes, conflitos, histograma de duração, retries de transação, reentregas, DLQ, divergências de reconciliação e pendência/atraso da outbox (com três réplicas cada scrape reflete o processo atingido; consolidação exige agregação externa). O acompanhamento está em [PLANO_SISTEMA_JUNGLE_GO.md](PLANO_SISTEMA_JUNGLE_GO.md). Prazo interno: **14/10/2026**.
+A [auditoria final](docs/AUDITORIA_FINAL_ENTREGA.md) traz a matriz A01–A13,
+comandos, evidências e limites; a [conformidade](docs/CONFORMIDADE_DESAFIO.md)
+relaciona os requisitos oficiais. As auditorias antigas permanecem como
+histórico. Consulte também o [guia de entrevista](docs/GUIA_ENTREVISTA_JUNGLE.md).
 
-A [matriz de conformidade](docs/CONFORMIDADE_DESAFIO.md) relaciona as exigências oficiais à implementação, aos testes e às pendências. O README oficial prevalece sobre o plano interno; a entrega só estará concluída com os requisitos obrigatórios demonstrados no ambiente exigido.
+A aplicação implementa BET, WIN, LOSS, REFUND e ROLLBACK, dinheiro exato,
+idempotência persistente, ledger append-only, OIDC/Keycloak, inbox/outbox,
+worker de referências e três processos Go independentes. HTTP/SQS compartilham
+o caso de uso; PostgreSQL confirma os efeitos financeiros atomicamente.
+
+## Demonstração reproduzível
+
+Go 1.27.2, Docker Compose, Make, curl, jq e Python 3 instalados; k6 é necessário
+somente para carga. Da raiz de um checkout limpo, em um terminal Bash:
+
+```sh
+export COMPOSE_PROJECT_NAME=jungle-demo-$(date +%Y%m%d%H%M%S)
+export GATEWAY_URL=http://localhost:9080
+export KEYCLOAK_URL=http://localhost:59080
+export SQS_URL=http://localhost:49570
+docker compose -f docker-compose.yml up --build -d
+docker compose -f docker-compose.yml ps
+bash scripts/smoke.sh
+FAULT_DISPOSABLE=1 bash scripts/fault.sh
+curl --fail "$GATEWAY_URL/health/ready"
+```
+
+Smoke exige 50 respostas para a mesma aposta (um efeito, 49 replays), saldo e
+ledger reconciliados; depois testa literalmente duas apostas de 80.00 sobre
+100.00, uma rejeição e saldo final 20.00. Fault executa SIGKILL controlado em
+E/F e restart com pendência H, imprimindo IDs e evidências. O primeiro build
+leva mais tempo; não prometer duração fixa da demonstração. Todos os segredos
+no Compose são fictícios e exclusivos de desenvolvimento.
+
+Ao terminar, **somente para esse projeto descartável**, a limpeza destrutiva
+é `docker compose -f docker-compose.yml down -v`; apaga seu volume de teste.
+Para manter os dados, use `stop`. Nunca executar limpeza contra um projeto
+preexistente. Para detalhamento de configuração, API e integração, siga abaixo.
 
 ## Executar localmente
 
@@ -100,7 +140,7 @@ Portas publicadas (apenas loopback):
 - gateway `9080` → três réplicas (upstream resolvido por request no DNS do Docker);
 - IdP `59080` → Keycloak publico da máquina; o issuer validado pelas réplicas é
   `http://keycloak:8080/realms/jungle` (divisão dev permitida pelo §6.2);
-- PostgreSQL não é publicado.
+- PostgreSQL `59532` em loopback, para o verificador independente.
 
 O `scripts/smoke.sh` reproduz o cenário oficial de ponta a ponta contra essa
 instância: tokens `client_credentials` reais, abertura de `100.00 BRL`,
@@ -301,7 +341,7 @@ curl --fail http://localhost:8080/health/live
 docker stop --time 15 jungle-backend-local
 ```
 
-A imagem usa build multi-stage e executa com usuário sem privilégios. O Compose com PostgreSQL, Keycloak e LocalStack será adicionado nas etapas correspondentes do plano.
+A imagem usa build multi-stage e executa com usuário sem privilégios. O Compose de entrega inclui PostgreSQL, Keycloak, LocalStack e três APIs.
 
 ## Organização e próximos passos
 
@@ -335,7 +375,7 @@ docs/reference/                   snapshot do enunciado e procedência
 references/                       clone local do desafio (ignorado pelo Git)
 ```
 
-As decisões e limites estão em [ARCHITECTURE.md](ARCHITECTURE.md). O publisher da outbox publica pós-commit com claim/lease, backoff e republicação com mesmo `eventId`, verificado com LocalStack e PostgreSQL reais; o próximo incremento é o Compose de entrega e a demonstração com três processos. O consumidor SQS já chama o mesmo `ProcessWager` da API HTTP.
+As decisões e limites estão em [ARCHITECTURE.md](ARCHITECTURE.md). O publisher da outbox publica pós-commit com claim/lease, backoff e republicação com mesmo `eventId`, verificado com LocalStack e PostgreSQL reais; a demonstração com três processos está nos scripts de entrega. O consumidor SQS já chama o mesmo `ProcessWager` da API HTTP.
 
 O módulo e o remoto `origin` usam o repositório [hendelsantos/jungle-backend-challenge-go](https://github.com/hendelsantos/jungle-backend-challenge-go).
 
@@ -523,7 +563,7 @@ campanhas anteriores. As pausas `JUNGLE_TEST_POST_COMMIT_PAUSE` e
 vazias na operação normal. A conformidade permanece parcial; ver os limites
 registrados em [CONFORMIDADE_DESAFIO.md](docs/CONFORMIDADE_DESAFIO.md).
 
-### Revisão final em andamento — 14/10/2026
+### Revisão final — 14/10/2026
 
 A matriz atual está em [AUDITORIA_FINAL_ENTREGA.md](docs/AUDITORIA_FINAL_ENTREGA.md).
 As políticas IAM são templates: o servidor local ainda usa uma única identidade

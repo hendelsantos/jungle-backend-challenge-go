@@ -159,7 +159,7 @@ Quatro migrations `up`/`down` em `migrations/` seguem a convenção do golang-mi
 
 **Wager_transactions:** a máquina de estados do domínio está codificada em `CHECK`s independentes — presença de `failure_code` é equivalente lógica a `status IN ('REJECTED','FAILED')`; resultado sempre em par (`result_balance_cents`/`result_wallet_version`) não negativo; `PROCESSED` exige resultado; `FAILED` proíbe; estados pendentes são puros (sem resultado, código ou referência resolvida); `OPENING` processado exige resultado igual à quantia com versão 1. Metadados externos são todos obrigatórios e não vazios para kinds externos e todos nulos para `OPENING`; `payload_hash` segue `^[0-9a-f]{64}$`; valor por kind (`LOSS` zero, externos positivos, `OPENING` não negativo); referência externa obrigatória em `REFUND`/`ROLLBACK`, proibida em `BET`/`LOSS`/`OPENING`, opcional em `WIN`; `reference_transaction_id` tem FK própria e proibição de autorreferência. Idempotência durável por dois índices únicos parciais (`(provider_id, idempotency_key)` e `(provider_id, external_transaction_id)` sobre origem externa); `UNIQUE(wallet_id) WHERE kind='OPENING'` impede crédito inicial duplicado; `UNIQUE(reference_transaction_id) WHERE kind IN ('REFUND','ROLLBACK') AND status='PROCESSED'` materializa a ADR 0001 (uma única compensação direta bem-sucedida, seja REFUND ou ROLLBACK); índice parcial por `next_attempt_at` serve o worker de referências.
 
-**Ledger:** `UNIQUE(wallet_id, transaction_id)`, quantia positiva, saldos não negativos e `CHECK` aritmético por direção; soma além de `BIGINT` gera erro SQL no insert. Append-only por dois triggers: `BEFORE UPDATE OR DELETE` por linha e `BEFORE TRUNCATE` por statement, ambos levantando exceção. Isso bloqueia qualquer papel que não possa desabilitar triggers; a separação entre usuário de migração e usuário de runtime (sem `ALTER`/`DROP`/`TRUNCATE`/desabilitar trigger) vem com o ambiente Compose.
+**Ledger:** `UNIQUE(wallet_id, transaction_id)`, quantia positiva, saldos não negativos e `CHECK` aritmético por direção; soma além de `BIGINT` gera erro SQL no insert. Append-only por dois triggers: `BEFORE UPDATE OR DELETE` por linha e `BEFORE TRUNCATE` por statement, ambos levantando exceção. Isso bloqueia qualquer papel que não possa desabilitar triggers; o Compose local usa um usuário administrativo único. Separar usuário de migration/runtime (sem ALTER/DROP/desabilitar triggers) continua pendente para produção.
 
 **Inbox e outbox:** inbox com `PRIMARY KEY(consumer_name, message_id)` e `CHECK(completed_at >= received_at)`; a conclusão compartilhará a transação SQL do tratamento. Outbox com tipos de evento válidos, `attempts >= 0`, `next_attempt_at NOT NULL` (evento nasce elegível), lease pareado (`leased_by`/`leased_until` juntos ou ausentes), índice parcial de pendentes por `next_attempt_at` e índice por `(aggregate_id, occurred_at)`.
 
@@ -276,7 +276,7 @@ No futuro consumidor SQS, a UnitOfWork externa da inbox será dona do commit e d
 
 - Diferenciais opcionais do enunciado (partidas dobradas, tracing OpenTelemetry, dashboards) — explicitamente fora do escopo do prazo. A suíte de carga com k6 foi entregue (`tests/load/`, `docs/PERFORMANCE_REPORT.md`).
 
-As seções anteriores registram a evolução por incremento; as garantias atuais do processamento estão descritas acima. Os requisitos obrigatórios estão comprovados com evidência real; a lista consolidada está em `docs/CONFORMIDADE_DESAFIO.md` e `docs/QA_RELATORIO_FINAL.md`.
+As seções anteriores registram a evolução por incremento; as garantias atuais do processamento estão descritas acima. A revisão atual comprova o núcleo financeiro e explicita A01/A02 pendentes em `docs/AUDITORIA_FINAL_ENTREGA.md`; não há conformidade integral.
 
 
 ## Falhas literais — Fase 6, incremento 4
@@ -285,52 +285,32 @@ As seções anteriores registram a evolução por incremento; as garantias atuai
 entrega, fechando o que a integração determinística comum não cobre: um
 processo morto de verdade no meio do fluxo.
 
-**Design do drill.** O comando `docker compose kill -s KILL api` mata as três
-réplicas de uma vez; como todas disputam a mesma fila, o momento exato da
-morte (antes do receive, durante o processamento, após o commit e antes do
-delete, ou depois do delete) não é previsível — e é justamente essa a
-proposição: em qualquer ponto de morte, recomeçar leva ao mesmo resultado
-financeiro, decidido pela identidade persistente (índices únicos, inbox e
-referência no banco), nunca pela memória do processo. `up -d api` devolve as
-réplicas com retry dentro da espera de saúde (a recuperação de contêiner morto
-às vezes exige repetir `up -d` mesmo com a configuração inalterada).
+**Design atual (14/10/2026).** A build tag `faulttest` inclui bloqueios
+observáveis; a build normal recusa as variáveis que os ativam. E exige commit
+da inbox antes de matar as três réplicas e depois exige replay da mesma
+mensagem. F exige envio aceito, ACK ausente e lease válida; mata as réplicas e
+comprova nova tentativa após expiração natural, com eventId/digest iguais.
+H comprova a persistência da pendência e a resolução cruzando HTTP→SQS.
 
-**Asserções e custos.** Toda verificação é por HTTP com tokens reais: saldo,
-contagem de lançamentos do ledger, status da operação por ID externo e
-reconciliação de snapshot. O produtor assinante (`cmd/send-wager`) fala com o
-LocalStack publicado apenas em loopback; a fila é resolvida via
-`get-queue-url`, pois o esquema de URL do LocalStack muda entre versões.
-
-**Aprendizados registrados:** dois erros de identidade descobertos pela
-política do domínio ao construir o script — player divergente da carteira
-(`ErrWalletScope`, DLQ permanente) e rodada divergente entre REFUND e BET
-(pendência reagendando indefinidamente em vez de concluir); ambos comprovam a
-validação de escopo e moldaram o drill (identidades casadas exatamente). O
-"not observed in flight" acontece quando a mensagem é consumada antes da
-janela de observação; o canal de voo determinístico já está coberto pelos
-failpoints de integração.
-
+O script falha se não atingir a janela. Usa SQL para precondições, logs para
+correlação e HTTP autenticado para saldo/ledger/reconciliação. Métricas globais
+de backlog, isoladamente, não seriam prova do evento-alvo. O método antigo de
+pausas temporizadas foi substituído; a auditoria histórica documenta a lacuna.
 
 ## Métricas financeiras — Fase 6, incremento 3
 
 `/metrics` serve um registro Prometheus dedicado (`observability.Prometheus`,
-deliberadamente sem métricas de runtime Go). Conjuntos são singletons por processo:
-`sync.Once` impede o duplo registro de construtor repetido (bootstrap, testes).
+deliberadamente sem métricas de runtime Go). Contadores são singletons por processo (`sync.Once`); gauges dependentes de
+store/pool pertencem ao handler e são combinados por Gatherers.
 
-**Financeiros:** `jungle_wager_operations_total{kind,status}` conta cada resposta
-do caso de uso concluída no handler HTTP — um replay idempotente também é uma
-resposta com status persistido, contada como operação e adicionalmente em
-`jungle_wager_idempotent_replays_total`; conflitos de identidade viram
-`jungle_wager_idempotency_conflicts_total` (409). A duração por kind vai no
-histograma `jungle_wager_processing_duration_seconds{kind}`. Retries de
-transação do `ProcessWager` alimentam `jungle_wager_db_retries_total{reason}`
-(o rótulo é limitado: `retryable_transaction`; classificação por SQLSTATE
-específica fica posterior). No consumidor SQS,
-`jungle_wager_sqs_redeliveries_total` conta mensagens com
-`ApproximateReceiveCount > 1` e `jungle_wager_dlq_total` cada cópia à DLQ. Na
-reconciliação interna, `jungle_wallet_reconciliations_total` conta execuções e
-`jungle_wallet_reconciliation_divergences_total` marca divergências (o saldo
-nunca é corrigido; o log JSON já existente persiste a diferença).
+**Financeiros:** HTTP e SQS contabilizam novos resultados por kind/status;
+replays incrementam somente o contador de replays. Uma pendência pode produzir
+um resultado PENDING_REFERENCE e depois um terminal via worker. O callback do
+worker roda após commit bem-sucedido. Histograma mede tentativas do caso de uso
+com kinds enumerados/INVALID; retries SQL de wager/inbox/referências têm reason
+limitado. SQS conta reentregas, cópias à DLQ confirmadas e falhas de cópia em
+contadores separados. Redrive automático requer métricas do broker. Os counters
+são best-effort por processo, não trilha financeira durável.
 
 **Outbox:** contadores por processo (`claim/publish/failures/retries/lease`) e
 os gauges `jungle_outbox_pending`/`jungle_outbox_oldest_age_seconds` como um
@@ -341,7 +321,7 @@ como métrica inválida na saída, nunca como zero velho.
 não permitir cardinalidade explosiva — identidade de jogador/carteira/provedor
 nunca vira rótulo; o correlationId permanece só nos logs JSON.
 
-As seções anteriores registram a evolução por incremento; as garantias atuais do processamento estão descritas acima. Os requisitos obrigatórios têm evidência real; a suíte de carga k6 está em `tests/load/` com resultados em `docs/PERFORMANCE_REPORT.md`; os diferenciais opcionais (tracing, dashboards, partidas dobradas) permanecem fora do escopo do prazo.
+As seções anteriores registram a evolução por incremento; as garantias atuais do processamento estão descritas acima. Os requisitos e suas limitações estão na auditoria final; a suíte de carga k6 está em `tests/load/` com resultados em `docs/PERFORMANCE_REPORT.md`; os diferenciais opcionais (tracing, dashboards, partidas dobradas) permanecem fora do escopo do prazo.
 
 
 ## Compose de entrega e três processos — Fase 6, incremento 2

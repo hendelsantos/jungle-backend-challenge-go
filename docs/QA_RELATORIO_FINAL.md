@@ -1,4 +1,8 @@
-# Relatório de QA final — Jungle Backend Go
+# Relatório de QA histórico — Jungle Backend Go
+
+> **Parecer vigente:** [AUDITORIA_FINAL_ENTREGA.md](AUDITORIA_FINAL_ENTREGA.md),
+> 14/10/2026. O GO e as estimativas abaixo são históricos e não valem como
+> aprovação atual. A revisão atual mantém A01/A02 pendentes.
 
 > **Revisão posterior:** a [auditoria independente de 13/10/2026](AUDITORIA_INDEPENDENTE_2026-10-13.md), base `e11e325`, encontrou 13 achados abertos e qualificou o parecer de aprovação abaixo. Este documento é mantido como histórico.
 

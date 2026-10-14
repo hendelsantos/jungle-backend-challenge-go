@@ -45,9 +45,11 @@ conferir `/health/ready` em todas as réplicas e rodar `cmd/verifywallet` nas
 
 **Sintomas:** 401 em massa com `UNAUTHENTICATED`; startup trava em discovery.
 
-**Resposta:** `docker compose restart keycloak`; app não serve sem IdP
-(propositado). Depois: verificar emissão de token `client_credentials` de
-`provider-a-client`; auditar falhas espúrias em `jungle_wager_operations_total`.
+**Resposta:** `docker compose restart keycloak`; discovery é exigido no startup.
+Em processos já iniciados, tokens ainda válidos podem ser verificados com as
+chaves em cache; indisponibilidade do IdP não implica rejeição imediata de todos
+os tokens. Depois: verificar emissão de token `client_credentials` de
+`provider-a-client` e os logs de falha de autenticação.
 
 ## 3. LocalStack/SQS indisponível
 
@@ -57,15 +59,15 @@ erros `sendMessage/Receive` com backoff.
 **Resposta:** `docker compose restart localstack`; readiness fica 503 até recuperar filas; o gateway local não remove
 réplicas automaticamente. **Limitação real do
 ambiente de desenvolvimento, verificada empiricamente em 13/10/2026:** o
-LocalStack Community não tem persistência (`PERSISTENCE=1` não persiste filas
-na edição Community — restart de prova apagou a fila; persistência é recurso
-Pro). Ensaio com registros antes/depois: 2 eventos publicados e confirmados na
+LocalStack Community 4.14.0 não preservou filas com `PERSISTENCE=1` e volume
+no ensaio. Não extrapolar esse resultado para outras versões ou planos.
+Ensaio com registros antes/depois: 2 eventos publicados e confirmados na
 outbox (`published_at` preenchido) e visíveis na fila → restart somente do
 LocalStack → `ListQueues` vazio, readiness 503, banco intacto → restart das
 APIs → filas recriadas, readiness 200, **fila de eventos com 0 mensagens: os
 2 eventos publicados foram perdidos do broker**. O banco de outbox permanece
 auditável; republicação automática desses eventos não é o desenho — a
-garantia at-least-once cobre perdas ANTES do ack, não a perda do armazenamento
+recuperação da outbox cobre falhas ANTES do ack, não a perda do armazenamento
 do broker depois. SQS gerenciado tem garantias próprias de durabilidade, que não foram
 validadas neste ambiente. Não afirmar "não há perda" ao reiniciar o
 broker de desenvolvimento. Conferir §4 para o caso de eventos pendentes
@@ -77,9 +79,9 @@ broker de desenvolvimento. Conferir §4 para o caso de eventos pendentes
 `SELECT count(*) FROM outbox_events WHERE published_at IS NULL`.
 
 **Resposta:** (a) identificar a causa — publisher parado (réplica derrubada),
-broker fora (§3), over-eng cumulativa do produtor (§7); (b) sem produção nova,
-medir a taxa de dreno com `OUTBOX_WORKERS` (3 por padrão ≈ 408 ev/s total em
-3 réplicas); (c) NUNCA marcar eventos manualmente como publicados nem apagar
+broker fora (§3), produção superior à capacidade de publicação ou pool saturado
+(§7); (b) sem produção nova, medir a taxa de dreno com `OUTBOX_WORKERS`
+(3 por padrão; capacidade depende do ambiente); (c) NUNCA marcar eventos manualmente como publicados nem apagar
 linhas: republicação segura é o mecanismo projetado (mesmo `eventId`,
 dedup at-least-once pelo consumidor).
 
@@ -120,7 +122,7 @@ piora (A/B: c36/c48 degradaram por saturação do Postgres).
 
 **Sintomas:** reinícios em loop de uma réplica; readiness oscilando.
 
-**Resposta:** `docker compose logs api-<n>`; remover a réplica do gateway
+**Resposta:** `docker compose logs api`; remover a réplica do gateway
 (retirar do `upstream`) até diagnóstico; as duas restante mantêm a integridade
 (SQ. SKIP LOCKED e índices únicos decidem no banco). Kills literais são
 exercícios cobertos (`scripts/fault.sh`).

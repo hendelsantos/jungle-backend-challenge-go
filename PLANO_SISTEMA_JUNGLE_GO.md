@@ -1328,3 +1328,26 @@ probes reais confirmaram ausência de IAM e perda pós-ACK no broker gratuito.
 
 Perguntas: por que um check precisa de threshold? Por que snapshot evita falsa
 divergência? Por que published_at não prova retenção futura pelo broker?
+
+### Fechamento documental e reprodução — 14/10/2026
+
+Implementação `56d5d76` validada em checkout limpo e projeto exclusivo: migration
+4 sem dirty, três processos saudáveis, smoke, E/F/H e encerramento SIGTERM
+com três exit 0. Gates completos aprovados; integração real sem skips: 627
+casos/subtestes em count=1 e 1.254 em count=2. Oito cenários k6 + SQL passaram.
+CI remoto de 56d5d76 aprovado nos dois jobs. Histórico Gitleaks de 45 commits
+sem vazamento detectado; govulncheck v1.9.0 sem vulnerabilidade reportada.
+
+README, arquitetura, conformidade, segurança e runbook consolidados; relatório
+final e guia de entrevista adicionados. Relatórios antigos preservados como
+histórico. Parecer **NO-GO para conformidade integral**: A01 parcial e A02
+aberto, pois o broker gratuito não aplica IAM e perde eventos confirmados no
+restart. A03–A13 corrigidos e testados nos limites documentados. Nenhuma AWS
+real ou serviço pago utilizado. Os requisitos obrigatórios pendentes impedem
+de declarar a entrega pronta, apesar da regressão financeira aprovada.
+
+Conceitos: Fx encerra hooks na ordem inversa; context propaga cancelamento;
+processos Go distintos coordenam dinheiro pelo PostgreSQL, não por mutex local.
+Perguntas: por que três processos precisam do mesmo lock SQL? Quando uma outbox
+publicada deixa de permitir recuperação automática? O que exit 0 após SIGTERM
+comprova e o que ainda exige um teste com requisição ativa?

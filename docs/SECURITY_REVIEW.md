@@ -15,7 +15,7 @@
 | Vazamento de credenciais | segredos no repositório | Gitleaks na CI + histórico completo (`no leaks found` 25 commits); segredos de desenvolvimento marcados como exclusivos do compose local | `ci.yml`, `docs/QA_RELATORIO_FINAL.md` |
 | Dependências vulneráveis | CVEs em módulos Go | govulncheck no workflow com versão fixa | CI (fast job) |
 | Exposição de métricas/logs | `/metrics` e logs contendo dados sensíveis | `/metrics` no loopback com labels enumerados (kind/status/reason); logs JSON sem tokens/salarios/PAN — correlation/message/transaction/wallet/provider ids apenas | `internal/observability`, revisão de log calls |
-| Uso indevido de endpoints de administração | manipulação de carto/ledger via API | sem rota de mutação financeira além dos contratos oficiais; ledger físico append-only (triggers); aplicação M faixa de runtime sem ALTER/DROP/TRUNCATE | triggers de migration + matriz |
+| Uso indevido de endpoints de administração | manipulação de carto/ledger via API | sem rota de mutação financeira além dos contratos oficiais; ledger físico append-only (triggers); runtime local usa o usuário administrativo do Compose; segregação de permissões SQL ainda não implantada | triggers de migration + matriz |
 | Fila de eventos consumida repetidamente | eventos duplicados fiscal | eventId estável + dedup FIFO + responsabilidade do consumidor externo documentada (at-least-once); o sistema nunca promete exactly-once | `ARCHITECTURE.md` §outbox |
 
 ## 2. Credenciais e segredos
@@ -26,9 +26,8 @@
   `jungle` (`*-client-secret`) e chaves HMAC (`local-provider-*-signing-key`)
   são **exclusivos do Compose de desenvolvimento**, marcados em `README.md`,
   `.env.example` e nos provisionings. Gitleaks acompanha o histórico.
-- ** mais conflitos**: a chave de API usada na sessão de trabalho (TypeSafe AI)
-  nunca entrou no repositório (0 no histórico; reside apenas em `~/.bashrc`
-  da máquina local).
+- **Escopo da verificação:** o scanner cobre os arquivos e o histórico do
+  repositório; não constitui auditoria das credenciais da máquina do desenvolvedor.
 
 ## 3. Fronteira de confiança da mensageria
 
@@ -99,3 +98,19 @@ conforme a [referência IAM do SQS](https://docs.aws.amazon.com/service-authoriz
 A resource policy de negação não concede permissões e não é provisionada pelo
 código. Avaliação de políticas no simulador IAM, isoladamente, também não prova
 acesso operacional ao SQS. Testes negativos reais continuam obrigatórios.
+
+## Evidências da revisão final
+
+Em 14/10, SendMessage anônimo com política Deny foi aceito pelo broker local
+com ENFORCE_IAM=1. Não foi demonstrado bypass do OIDC ou da assinatura HMAC.
+A01 permanece parcial. `govulncheck@v1.9.0` concluiu sem vulnerabilidades
+alcançáveis reportadas. Gitleaks passou após exceção exata de uma chave
+fictícia de httptest; a configuração não desabilita a regra genérica.
+Ver [evidências e limites](audit/2026-10-14/README.md).
+
+CI de implementação `56d5d76` aprovado nos dois jobs em 14/10:
+[run 38536103961](https://github.com/hendelsantos/jungle-backend-challenge-go/actions/runs/38536103961).
+Gitleaks reexecutado: 45 commits, nenhum vazamento detectado. Três alertas da
+varredura de todo o diretório eram chaves de idempotência sintéticas em saídas
+k6 ignoradas pelo Git; nenhuma exceção genérica adicionada. Os caminhos
+versionados não incluem .env, binários, resultados temporários ou clone oficial.
