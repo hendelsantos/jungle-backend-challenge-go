@@ -1381,3 +1381,40 @@ vet integration, integração real com race (635 testes/subtestes, zero falhas o
 skips), Compose com três APIs e smoke aprovados. Broker-recovery terminou em
 exit 2 por perda de 14 mensagens após restart; A01/A02 continuam pendentes.
 [Comandos, evidências e falhas iniciais](docs/audit/2026-10-14/sqs-runtime.md).
+
+### Missão final — POC MiniStack isolada e reprovação (14/10/2026)
+
+Incremento em HEAD `150ac92`, main sincronizada. Fase 1 concluída na
+[viabilidade](docs/VIABILIDADE_MINISTACK.md): repositório legítimo (MIT), imagem
+`ministackorg/ministack:1.5.27` com digest fixado, capacidades conferidas no
+código da tag; dois riscos identificados (bypass root builtin e snapshot
+somente no shutdown). Fase 2: `compose.ministack.yaml` em projeto descartável
+exclusivo (`jungle-ministack-poc-*`), loopback, `AUTH=true`, `PERSIST_STATE=1`,
+volume próprio; `scripts/ministack-poc-env.sh` valida o ambiente antes de cada
+probe. Fases 3–4: probes de aceitação versionados em `tests/broker`
+(tag `ministackpoc`) com SDK Go v2 real, executados contra o broker vivo.
+
+Resultados observados: **A01 reprovado** — IAM aplicado para usuários nomeados
+(negações cross-queue 403, `SignatureDoesNotMatch` com segredo errado), mas
+envio anônimo e AccessKeyId builtin (`test`, account-id) com segredo errado
+receberam HTTP 200 em operação proibida. **A02 reprovado** — restart graceful
+preservou 3/3 mensagens (corpo/grupo/dedup/receive count/FIFO/deduplicação
+pós-delete), mas SIGKILL perdeu as 3 mensagens aceitas desde o baseline
+(`accepted=3 recovered=0 lost=3`); a fila existia sem reprovisionamento, o que
+isola a perda como de estado, não de infraestrutura. DLQ/redrive funciona com
+leases positivos; `VisibilityTimeout=0` no receive não é honrado (divergência
+documentada no probe). Fases 5–6 **bloqueadas por critério**: sem A01/A02
+aprovados não há integração nem regressão financeira contra o MiniStack; o
+núcleo financeiro e o Compose de entrega permanecem intactos.
+
+Decisão: **migração interrompida**; LocalStack permanece como broker de
+entrega e desenvolvimento. Parecer completo, matriz A01 e evidências A02 em
+[docs/AUDITORIA_MINISTACK_FINAL.md](docs/AUDITORIA_MINISTACK_FINAL.md).
+CI compila/veta os probes sem executá-los como aprovação.
+
+Conceitos Go: build tags isolam probes de aceitação do build normal; transporte
+HTTP customizado registra o status real do broker por operação; `atomic.Int32`
+evita corrida no campo observado. Perguntas: por que um HTTP 200 do broker é
+evidência mais forte que o erro do SDK? Por que snapshot-no-shutdown não
+satisfaz durabilidade de mensagens aceitas? Por que a CI não pode rodar esses
+probes como gate de aprovação?

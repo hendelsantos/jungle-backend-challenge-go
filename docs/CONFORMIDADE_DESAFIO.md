@@ -5,6 +5,9 @@ Fonte normativa: [README original preservado](reference/README_DESAFIO.md), comm
 Revisão vigente: **14/10/2026**, implementação `56d5d76` e relatório
 [AUDITORIA_FINAL_ENTREGA.md](AUDITORIA_FINAL_ENTREGA.md). **NO-GO para
 conformidade integral:** A01/A02 permanecem pendentes no ambiente local.
+O candidato local MiniStack 1.5.27 foi avaliado em POC isolada e
+**reprovou ambos os gates** ([auditoria MiniStack](AUDITORIA_MINISTACK_FINAL.md));
+migração interrompida.
 As tabelas históricas abaixo não sobrepõem a matriz vigente.
 
 ## Matriz vigente de requisitos
@@ -12,8 +15,8 @@ As tabelas históricas abaixo não sobrepõem a matriz vigente.
 | Exigência | Implementação e evidência atual | Estado |
 | --- | --- | --- |
 | §2 OIDC externo e isolamento | Keycloak real, tokens inválidos/expirados/audience, roles, isolamento de replay/consulta; integração sem skips | Atendido nos ensaios |
-| §2 autorização do broker | Cadeia AWS sem fallback + HMAC; política Deny não aplicada no LocalStack; provisionador separado e dois clientes runtime; políticas ainda são templates no LocalStack | **Parcial — A01** |
-| §3 preservação de eventos em falhas | Pendentes durante indisponibilidade se recuperam; restart do broker perde mensagens aceitas após ACK | **Não atendido localmente — A02** |
+| §2 autorização do broker | Cadeia AWS sem fallback + HMAC; política Deny não aplicada no LocalStack; provisionador separado e dois clientes runtime; políticas ainda são templates no LocalStack; MiniStack 1.5.27 reprovado em POC (aceita anônimo e builtin forjado) | **Parcial — A01** |
+| §3 preservação de eventos em falhas | Pendentes durante indisponibilidade se recuperam; restart do broker perde mensagens aceitas após ACK; MiniStack 1.5.27 reprovado em POC (SIGKILL perde todas as mensagens aceitas) | **Não atendido localmente — A02** |
 | §4 Go/Fx/PG/SQS/Compose/migrations | Build, vet, race, migrations reais; três processos independentes | Atendido nos ensaios |
 | §§5–6 Money, saldo, ledger e atomicidade | Centavos int64, overflow, constraints, append-only, rollback de saldo/ledger/outbox/inbox | Atendido nos ensaios |
 | §7 cinco operações e compensação | BET/WIN/LOSS/REFUND/ROLLBACK, ADR 0001, códigos estáveis; integração real | Atendido nos ensaios |
@@ -242,3 +245,18 @@ independentes e job administrativo validados; integração real com race:
 635 testes/subtestes, zero falhas/skips. Smoke aprovado em três APIs. Novo
 restart confirmou perda de 14 mensagens aceitas, portanto A02 permanece aberto.
 [Evidências deste incremento](audit/2026-10-14/sqs-runtime.md).
+
+### Missão final — POC MiniStack (14/10/2026)
+
+Candidato local MiniStack 1.5.27 (imagem com digest fixado, `AUTH=true`,
+`PERSIST_STATE=1`, volume próprio, projeto descartável exclusivo) avaliado com
+probes de aceitação versionados (`tests/broker`, tag `ministackpoc`; scripts
+`test-sqs-iam.sh`/`test-sqs-persistence.sh`). Resultado: **reprovado nos dois
+gates** — broker aplica IAM para usuários nomeados (negações cross-queue e
+`SignatureDoesNotMatch` reais), mas aceita envio anônimo e AccessKeyId builtin
+(`test`, account-id) com segredo errado (A01); restart graceful preserva
+mensagens íntegras, mas SIGKILL perde todas as aceitas desde o último snapshot
+(A02). Migração interrompida; LocalStack permanece na entrega. Regressão
+financeira contra o MiniStack não executada por bloqueio (integração vedada
+sem A01/A02 aprovados). Parecer completo e reprodução:
+[AUDITORIA_MINISTACK_FINAL.md](AUDITORIA_MINISTACK_FINAL.md).

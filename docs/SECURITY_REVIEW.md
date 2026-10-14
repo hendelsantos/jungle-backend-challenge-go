@@ -90,7 +90,6 @@ Provisionamento foi separado em `cmd/provision-sqs`. O runtime usa dois clientes
 SDK com perfis opcionais independentes; o consumidor lê entrada/DLQ e o publisher
 lê/publica eventos. Nenhum deles cria/altera/exclui filas durante inicialização.
 O Compose local usa perfis fictícios distintos; isso não habilita IAM no broker.
-
 O provisionador só precisa CreateQueue, SetQueueAttributes, GetQueueUrl e
 GetQueueAttributes sobre as três filas. DeleteQueue/PurgeQueue/ListQueues não
 são necessários. O produtor precisa GetQueueUrl e SendMessage na entrada;
@@ -115,3 +114,20 @@ Gitleaks reexecutado: 45 commits, nenhum vazamento detectado. Três alertas da
 varredura de todo o diretório eram chaves de idempotência sintéticas em saídas
 k6 ignoradas pelo Git; nenhuma exceção genérica adicionada. Os caminhos
 versionados não incluem .env, binários, resultados temporários ou clone oficial.
+
+## Avaliação MiniStack — 14/10/2026
+
+O substituto local candidato (MiniStack 1.5.27, POC isolada, imagem com digest
+fixado, `AUTH=true`, `PERSIST_STATE=1`) foi avaliado com probes de aceitação
+versionados (`tests/broker`, tag `ministackpoc`) e **reprovado**: ver o
+[parecer completo](AUDITORIA_MINISTACK_FINAL.md). Pontos de segurança
+observados: (1) para usuários IAM nomeados o broker aplica políticas de verdade
+(negações cross-queue com 403 e `SignatureDoesNotMatch` com segredo errado) —
+controle que o LocalStack Community não tem; (2) o caminho root embutido aceita
+requisições **anônimas** e AccessKeyID builtin (`test`, account-id) com segredo
+**errado** com HTTP 200, tornando-o inaceitável como broker autorizador;
+(3) a persistência é snapshot-no-shutdown: SIGKILL perde todas as mensagens
+aceitas desde o último shutdown graceful. Migração interrompida; o MiniStack
+não entra no Compose de entrega. Se usado para desenvolvimento, manter
+restrito ao loopback. A CI apenas compila os probes; nunca os executa como
+aprovação.

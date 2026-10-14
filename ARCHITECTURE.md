@@ -276,7 +276,7 @@ No futuro consumidor SQS, a UnitOfWork externa da inbox será dona do commit e d
 
 - Diferenciais opcionais do enunciado (partidas dobradas, tracing OpenTelemetry, dashboards) — explicitamente fora do escopo do prazo. A suíte de carga com k6 foi entregue (`tests/load/`, `docs/PERFORMANCE_REPORT.md`).
 
-As seções anteriores registram a evolução por incremento; as garantias atuais do processamento estão descritas acima. A revisão atual comprova o núcleo financeiro e explicita A01/A02 pendentes em `docs/AUDITORIA_FINAL_ENTREGA.md`; não há conformidade integral.
+As seções anteriores registram a evolução por incremento; as garantias atuais do processamento estão descritas acima. A revisão atual comprova o núcleo financeiro e explicita A01/A02 pendentes em `docs/AUDITORIA_FINAL_ENTREGA.md`; não há conformidade integral. O substituto local avaliado (MiniStack 1.5.27, POC isolada) reprovou os gates de autorização e durabilidade — ver `docs/AUDITORIA_MINISTACK_FINAL.md`; o broker de entrega permanece o LocalStack.
 
 
 ## Falhas literais — Fase 6, incremento 4

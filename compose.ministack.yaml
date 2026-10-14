@@ -1,0 +1,27 @@
+# Isolated feasibility probe only. Never overlays the delivery Compose.
+# Use a NEW project for each run; keep its containers and volume as evidence.
+name: ${MINISTACK_POC_PROJECT:?Set a unique MINISTACK_POC_PROJECT}
+services:
+  ministack:
+    image: ministackorg/ministack:1.5.27@sha256:4cb4f8c5c1b8e58e9a37af1c80f243de5b5cecf2e7b0461086d0dc7781d6642c
+    ports:
+      - "127.0.0.1:${MINISTACK_POC_PORT:-14567}:4566"
+    environment:
+      AUTH: "true"
+      PERSIST_STATE: "1"
+      STATE_DIR: /var/lib/ministack
+      MINISTACK_REGION: us-east-1
+      MINISTACK_ACCOUNT_ID: "000000000000"
+      # Fictional bootstrap identity. Tests also probe built-in root bypasses.
+      AWS_ACCESS_KEY_ID: jungle-poc-bootstrap
+      AWS_SECRET_ACCESS_KEY: local-only-bootstrap
+    volumes:
+      - ministack-state:/var/lib/ministack
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4566/_ministack/health', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+    stop_grace_period: 30s
+volumes:
+  ministack-state:

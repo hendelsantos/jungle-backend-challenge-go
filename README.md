@@ -189,6 +189,12 @@ essas permissões**: separação do código não encerra A01. A perda de mensage
 após restart continua A02; recriar filas exige reexecutar o provisionador e
 não recupera mensagens já confirmadas. Não remover volumes para recuperar.
 
+O substituto local avaliado (MiniStack 1.5.27, POC isolada em
+`compose.ministack.yaml`) **reprovou os dois gates**: aceita operações anônimas
+e chaves builtin forjadas, e SIGKILL perde todas as mensagens aceitas desde o
+último shutdown graceful. Migração interrompida; LocalStack permanece.
+Parecer e reprodução: [docs/AUDITORIA_MINISTACK_FINAL.md](docs/AUDITORIA_MINISTACK_FINAL.md).
+
 [Validação do incremento](docs/audit/2026-10-14/sqs-runtime.md): integração real,
 reprovisionamento preservando mensagens, smoke com três APIs e limite de
 durabilidade novamente reproduzido após restart do LocalStack.

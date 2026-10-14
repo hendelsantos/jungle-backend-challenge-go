@@ -36,6 +36,12 @@ jobs:
         run: go vet ./...
       - name: vet integration build
         run: go vet -tags=integration ./...
+      - name: compile and vet isolated broker acceptance probes
+        # Compilation is NOT MiniStack acceptance: local IAM/durability gates
+        # currently fail. Never invert their exit codes to report approval.
+        run: |
+          go vet -tags=ministackpoc ./tests/broker
+          go test -race -tags=ministackpoc ./tests/broker -run '^$'
       - name: unit tests with race detector
         run: go test -race ./... -count=2
       - name: build all commands
