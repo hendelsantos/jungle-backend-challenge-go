@@ -1298,3 +1298,18 @@ HEAD inicial limpo e sincronizado em `6c04217`. Matriz inicial em
 faltantes do produtor/admin/readiness; explicitada a ausência de separação
 operacional no runtime. A01 continua parcial: cadeia AWS e HMAC são controles
 efetivos; não substituem autorização do broker. Sem AWS real ou serviços pagos.
+
+### Recuperação e observabilidade — 14/10/2026
+
+A03 comprovado com build exclusivo `faulttest`, bloqueios sem timer, SQL e logs
+antes do SIGKILL, replay da inbox e republicação na tentativa 2 com digest
+idêntico. E/F/H passaram no Compose isolado. A07 ganhou teste real de espera
+por lock e TTL; o prazo agora é verificado também após adquirir a carteira.
+A09 usa collectors por handler; A11 emite conclusão de referência pós-commit,
+conecta bootstrap e separa DLQ aceita de falha. Regressões unitárias repetidas,
+integração do worker e dois ciclos Fx HTTP/SQS aprovados. A01/A02 seguem abertos.
+
+Aprendizado: callbacks observacionais devem ocorrer depois do commit; build tags
+excluem instrumentação do binário normal; `context` libera failpoints em SIGTERM.
+Perguntas: por que inbox e saldo compartilham commit? Por que lease precisa de
+um token por claim? Por que métricas não substituem o ledger?

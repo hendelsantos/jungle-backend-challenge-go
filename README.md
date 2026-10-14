@@ -139,28 +139,25 @@ k6 run scenarios/soak.js           # 15 min com reconciliação periódica ao vi
 
 ## Falhas literais (Testes E/F/H)
 
-O `scripts/fault.sh` executa três drills contra o ambiente de entrega já ativo,
-com asserções financeiras por HTTP:
+Use um projeto Compose **descartável e isolado**, com `COMPOSE_PROJECT_NAME`
+explícito e as portas correspondentes em `GATEWAY_URL`, `KEYCLOAK_URL` e `SQS_URL`.
+Após subir o ambiente:
 
 ```sh
-GATEWAY_URL=http://localhost:9080 KEYCLOAK_URL=http://localhost:59080 bash scripts/fault.sh
+FAULT_DISPOSABLE=1 bash scripts/fault.sh
 ```
 
-- **Teste E:** `docker compose kill -s KILL api` nas três réplicas enquanto um
-  envelope assinado do SQS está em processamento; após o restart a reentrega
-  conclui a operação uma única vez (saldo, dois lançamentos e reconciliação
-  conferidos) — o registro durável decide, não o momento do kill.
-- **Teste F:** kill logo após o commit de eventos de outbox; o publisher drena
-  o backlog após o restart (`jungle_outbox_pending` → 0) com os mesmos eventIds.
-- **Teste H:** `PENDING_REFERENCE` (REFUND por HTTP referenciando um BET
-  futuro → `202`), `restart api` — a pendência sobrevive intocada — e chegada
-  posterior da BET **pelo SQS** (Envelope assinado): o worker conclui a
-  pendência cruzando os dois canais, com saldo exato, três lançamentos e
-  reconciliação consistente.
-
-O LocalStack de entrega fica publicado apenas em loopback
-(`JUNGLE_DELIVERY_SQS_PORT`, default `49570`) para o produtor assinante
-`cmd/send-wager`; o broker continua inacessível externamente.
+O script compila uma imagem separada com a tag Go `faulttest`; a imagem normal
+recusa a configuração dos failpoints. E bloqueia após commit da inbox e antes
+do delete, exige o registro SQL e mata os três processos; após reinício exige
+`inboxReplay=true`, mesmo messageId e receive count maior que um. F bloqueia
+após SendMessage aceito, verifica lease ainda válida e ACK ausente, mata os
+processos e exige tentativa 2 após expiração natural, mesmo eventId e SHA-256
+do payload nas duas chamadas aceitas. A deduplicação FIFO pode suprimir a
+segunda entrega. H reinicia com referência pendente e conclui por HTTP→SQS.
+Saldo, ledger e reconciliação são conferidos. Janela não alcançada reprova o
+script. A saída registra IDs, tentativas e evidências; o EXIT restaura a imagem
+normal. O broker local está publicado somente em loopback (porta padrão 49570).
 
 ## API autenticada
 

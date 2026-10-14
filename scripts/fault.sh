@@ -1,28 +1,37 @@
 #!/usr/bin/env bash
-# Literal failure drills against the delivery Compose (Fase 6, Testes E/F/H):
-#
-#  E - kill -9 the three api replicas while a signed SQS wager is being
-#      consumed; after restart the message redelivers and accounts exactly one
-#      movement for that identity (commit lost or kept, both recover).
-#  F - kill -9 the replicas right after committing outbox events; after
-#      restart the publisher drains the backlog to the same eventIds.
-#  H - restart the replicas with data while a PENDING_REFERENCE exists; after
-#      restart the worker keeps it scheduled and concludes it when the bet
-#      arrives. Requires curl, jq, python3 and `go run ./cmd/send-wager`.
+# Deterministic SIGKILL drills. Run only in an explicitly disposable Compose.
 set -euo pipefail
-
 GATEWAY_URL=${GATEWAY_URL:-http://localhost:9080}
 KEYCLOAK_URL=${KEYCLOAK_URL:-http://localhost:59080}
 SQS_URL=${SQS_URL:-http://localhost:49570}
-COMPOSE="docker compose -f docker-compose.yml"
 PROVIDER_KEY=${SQS_PROVIDER_KEY:-local-provider-a-signing-key-32-bytes-minimum}
-
 fail() { echo "fault FAILED: $*" >&2; exit 1; }
-for tool in curl jq python3 docker; do command -v "$tool" >/dev/null || fail "$tool is required"; done
-
-COMPOSE_CONTEXT=$(docker compose -f docker-compose.yml images -q api 2>/dev/null | head -1)
-[ -n "$COMPOSE_CONTEXT" ] || fail "delivery compose is not built; run docker compose -f docker-compose.yml up -d --build first"
-
+[ "${FAULT_DISPOSABLE:-}" = 1 ] || fail "set FAULT_DISPOSABLE=1 for an isolated disposable project"
+[ -n "${COMPOSE_PROJECT_NAME:-}" ] || fail "COMPOSE_PROJECT_NAME must identify the disposable project"
+COMPOSE="docker compose -f docker-compose.yml"
+for tool in curl jq python3 docker go; do command -v "$tool" >/dev/null || fail "$tool is required"; done
+normal_image=${JUNGLE_IMAGE:-jungle-backend-go:delivery}
+normal_tags=${JUNGLE_BUILD_TAGS:-}
+work=$(mktemp -d)
+runId=$(date +%s)$RANDOM
+sql() { $COMPOSE exec -T postgres psql -U jungle -d jungle -At -v ON_ERROR_STOP=1 -c "$1"; }
+logs() { $COMPOSE logs --no-log-prefix api 2>/dev/null | jq -Rc 'fromjson?'; }
+wait_log() { # jq filter, destination
+  for _ in $(seq 1 120); do
+    logs | jq -c "select($1)" > "$2"
+    [ -s "$2" ] && { cat "$2"; return; }
+    sleep 0.25
+  done
+  fail "critical window not reached: $1"
+}
+restore() {
+  export JUNGLE_TEST_POST_COMMIT_PAUSE= JUNGLE_TEST_PUBLISH_ACK_PAUSE=
+  export JUNGLE_IMAGE="$normal_image" JUNGLE_BUILD_TAGS="$normal_tags"
+  $COMPOSE up -d --no-deps api >/dev/null 2>&1 || true
+  rm -rf "$work"
+  rm -f /tmp/fault-h-"$runId".json /tmp/fault-h-bet-"$runId".json
+}
+trap restore EXIT
 token() {
   curl -sf "$KEYCLOAK_URL/realms/jungle/protocol/openid-connect/token" \
     -d grant_type=client_credentials \
@@ -42,7 +51,7 @@ wait_replicas_healthy() {
       echo "  replicas healthy again"; return 0
     fi
     # A killed replica can flake out of `up -d`; re-drive any exited container.
-    $COMPOSE up -d api >/dev/null 2>&1
+    $COMPOSE up -d --no-deps api >/dev/null 2>&1
     sleep 2
   done
   fail "replicas did not become healthy"
@@ -73,193 +82,74 @@ external_status() { # external_status EXTERNAL-ID
     -H "Authorization: Bearer $PROVIDER_TOKEN" | jq -r .status
 }
 
-queue_attr() { # queue_attr QUEUE-URL ATTRIBUTE-NAME -> numeric value
-  $COMPOSE exec -T localstack sh -c \
-    "awslocal sqs get-queue-attributes --queue-url '$1' --attribute-names '$2' --query 'Attributes.$2' --output text 2>/dev/null" | tr -d '[:space:]'
-}
 
-# The drill windows are restored on ANY exit (success, fail() or Ctrl-C): a
-# replica left holding a pause would keep delaying commits/publishes.
-restore_drill_config() {
-  if [ -n "${JUNGLE_TEST_POST_COMMIT_PAUSE:-}" ] || [ -n "${JUNGLE_TEST_PUBLISH_ACK_PAUSE:-}" ]; then
-    export JUNGLE_TEST_POST_COMMIT_PAUSE= JUNGLE_TEST_PUBLISH_ACK_PAUSE=
-    $COMPOSE up -d --no-deps api >/dev/null 2>&1 || true
-  fi
-}
-trap restore_drill_config EXIT
-
-# Drill windows: replicas hold after commit (before delete) and after the
-# SQS send (before the outbox ack), giving observable, deterministic kill
-# points. Restored (empty) by the trap at the end of the script. --no-deps:
-# recreating postgres/keycloak/localstack here would wipe the dev broker and
-# regenerate the IdP signing keys mid-drill.
-export JUNGLE_TEST_POST_COMMIT_PAUSE=12s
-export JUNGLE_TEST_PUBLISH_ACK_PAUSE=12s
-$COMPOSE up -d --force-recreate --no-deps api >/dev/null 2>&1
+# A dedicated binary includes blocking failpoints; normal builds reject the flags.
+export JUNGLE_IMAGE="jungle-backend-go:${COMPOSE_PROJECT_NAME}-faulttest"
+export JUNGLE_BUILD_TAGS=faulttest
+$COMPOSE build api >/dev/null 2>&1
+export JUNGLE_TEST_POST_COMMIT_PAUSE=1s JUNGLE_TEST_PUBLISH_ACK_PAUSE=
+$COMPOSE up -d --no-deps api >/dev/null 2>&1
 wait_replicas_healthy
+assert "three independent processes" 3 "$($COMPOSE ps -q api | wc -l | tr -d ' ')"
 
-# The intake queue is provisioned by the api replicas at startup; after a
-# LocalStack restart only a replica restart re-creates it. The queue URL comes
-# from the broker itself: LocalStack changed its URL scheme over versions.
-queue_url=""
-for _ in $(seq 1 60); do
-  queue_url=$($COMPOSE exec -T localstack sh -c \
-    'awslocal sqs get-queue-url --queue-name wager-transactions.fifo 2>/dev/null' | awk -F'"' '/QueueUrl/{print $4}')
-  if [ -n "$queue_url" ]; then echo "intake queue provisioned: $queue_url"; break; fi
-  sleep 2
-done
-[ -n "$queue_url" ] || fail "intake queue was never provisioned"
-
+echo '=== TEST E: durable inbox commit, blocked before DeleteMessage'
 playerID=$(python3 -c 'import uuid;print(uuid.uuid4())')
-runId=$(date +%s)$RANDOM
-
-echo "=== PREPARING: wallet with 100.00"
 wallet=$(open_wallet 100.00 "$playerID")
-echo "  wallet $wallet"
-assert "initial balance" "100.00" "$(wallet_state "$wallet")"
-assert "initial reconciliation" "true" "$(consistent "$wallet")"
-
-echo ""
-echo "=== TEST E: kill -9 all api replicas while a signed SQS wager is in flight"
 externalId="fault-bet-$runId"
-cat > /tmp/fault-wager-$runId.json <<EOF
-{
-  "messageId": "fault-$runId",
-  "type": "WagerTransactionRequested",
-  "occurredAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "data": {
-    "providerId": "provider-a",
-    "externalTransactionId": "$externalId",
-    "idempotencyKey": "$externalId",
-    "playerId": "$playerID",
-    "walletId": "$wallet",
-    "roundId": "fault-r-1",
-    "gameId": "fortune-chimp",
-    "kind": "BET",
-    "money": {"amount": "25.00", "currency": "BRL"}
-  }
-}
-EOF
-# The drill sets JUNGLE_TEST_POST_COMMIT_PAUSE so replicas hold BETWEEN the
-# durable commit and the DeleteMessage call — an observable kill window.
-# Synchronization: wait until the wager is committed (visible via API), then
-# kill DURING the pause; re-delivery must resolve as inbox replay.
+jq -n --arg msg "fault-$runId" --arg ext "$externalId" --arg player "$playerID" --arg wallet "$wallet" \
+  '{messageId:$msg,type:"WagerTransactionRequested",occurredAt:"2026-10-14T00:00:00Z",data:{providerId:"provider-a",externalTransactionId:$ext,idempotencyKey:$ext,playerId:$player,walletId:$wallet,roundId:"fault-e",gameId:"fortune-chimp",kind:"BET",money:{amount:"25.00",currency:"BRL"}}}' > "$work/wager.json"
 AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_SESSION_TOKEN= \
 SQS_ENDPOINT_URL="$SQS_URL" SQS_PROVIDER_KEY="$PROVIDER_KEY" \
-  go run ./cmd/send-wager -provider provider-a -file /tmp/fault-wager-$runId.json >/dev/null \
-  || fail "publishing signed wager"
-
-inflight=""
-for _ in $(seq 1 120); do
-  if [ "$(external_status "$externalId" 2>/dev/null || echo none)" = "PROCESSED" ]; then
-    inflight="committed-awaiting-delete"; break
-  fi
-  sleep 0.25
-done
-[ -n "$inflight" ] || fail "wager never committed within 30s"
-echo "  precondition observed: $inflight (kill lands inside the post-commit pause)"
-$COMPOSE kill -s KILL api >/dev/null 2>&1 || fail "docker kill api"
-echo "  three api processes killed AFTER commit, BEFORE DeleteMessage"
-# Recovery runs without the drill window so the redelivery deletes promptly.
+  go run ./cmd/send-wager -provider provider-a -file "$work/wager.json"
+wait_log ".failpoint == \"after-commit-before-delete\" and .messageId == \"fault-$runId\"" "$work/e-before.json"
+assert "inbox committed" 1 "$(sql "SELECT count(*) FROM inbox_messages WHERE message_id='fault-$runId' AND completed_at IS NOT NULL")"
+assert "committed balance before kill" 75.00 "$(wallet_state "$wallet")"
+$COMPOSE ps -q api
+$COMPOSE kill -s KILL api >/dev/null
 export JUNGLE_TEST_POST_COMMIT_PAUSE=
-$COMPOSE up -d api >/dev/null 2>&1
+$COMPOSE up -d --no-deps api >/dev/null 2>&1
 wait_replicas_healthy
+wait_log ".msg == \"wager message consumed\" and .messageId == \"fault-$runId\" and .inboxReplay == true and (.receiveCount | tonumber) > 1" "$work/e-after.json"
+assert "same broker message on redelivery" "$(jq -r '.sqsMessageId' "$work/e-before.json" | head -1)" "$(jq -r '.sqsMessageId' "$work/e-after.json" | head -1)"
+assert "one inbox" 1 "$(sql "SELECT count(*) FROM inbox_messages WHERE message_id='fault-$runId'")"
+assert "balance after redelivery" 75.00 "$(wallet_state "$wallet")"
+assert "ledger after redelivery" 2 "$(ledger_count "$wallet")"
+assert "reconciliation" true "$(consistent "$wallet")"
 
-deadline=$((SECONDS+120))
-while true; do
-  status=$(external_status "$externalId" 2>/dev/null || echo "not-found")
-  if [ "$status" = "PROCESSED" ]; then break; fi
-  if [ $SECONDS -gt $deadline ]; then fail "wager $externalId was not processed after restart (last: $status)"; fi
-  sleep 3
-done
-assert "wager processed once" "PROCESSED" "$status"
-# The redelivery must resolve as inbox replay: the message is eventually
-# deleted and the queue drains; any leftover would mean an unresolved copy.
-deadline=$((SECONDS+120))
-while true; do
-  v=$(queue_attr "$queue_url" ApproximateNumberOfMessages); nv=$(queue_attr "$queue_url" ApproximateNumberOfMessagesNotVisible)
-  case "$v$nv" in ''|*[!0-9]*) ;; *) [ "$v" = "0" ] && [ "$nv" = "0" ] && break ;; esac
-  if [ $SECONDS -gt $deadline ]; then fail "intake queue did not drain after restart (visible=${v:-?} not-visible=${nv:-?})"; fi
-  sleep 3
-done
-echo "  intake queue drained: the killed message was redelivered and resolved"
-assert "balance after redelivery" "75.00" "$(wallet_state "$wallet")"
-assert "ledger rows after redelivery" "2" "$(ledger_count "$wallet")"
-assert "reconciliation after redelivery" "true" "$(consistent "$wallet")"
-
-echo ""
-echo "=== TEST F: kill -9 after SQS accepted the event, before the outbox ack"
-# The drill sets JUNGLE_TEST_PUBLISH_ACK_PAUSE: the publisher holds BETWEEN
-# the SendMessage and the outbox ack. The event is observable on the events
-# queue (received WITHOUT deleting it), which proves the send happened; the
-# kill lands inside the pause; after restart the SAME eventId must flow again.
+echo '=== TEST F: SendMessage accepted, blocked before outbox ACK'
+export JUNGLE_TEST_PUBLISH_ACK_PAUSE=1s
+$COMPOSE up -d --no-deps api >/dev/null 2>&1
+wait_replicas_healthy
 competingPlayer=$(python3 -c 'import uuid;print(uuid.uuid4())')
-competingWallet=$(open_wallet 40.00 "$competingPlayer")
-curl -sf -X POST "$GATEWAY_URL/wagering/transactions" \
-  -H "Authorization: Bearer $PROVIDER_TOKEN" -H "Idempotency-Key: fault-f-bet-$runId" \
-  -H "Content-Type: application/json" \
-  -d "{\"providerId\":\"provider-a\",\"externalTransactionId\":\"fault-f-bet-$runId\",\"playerId\":\"$competingPlayer\",\"walletId\":\"$competingWallet\",\"roundId\":\"fault-f-1\",\"gameId\":\"fortune-chimp\",\"kind\":\"BET\",\"money\":{\"amount\":\"10.00\",\"currency\":\"BRL\"}}" >/dev/null \
-  || fail "committing an event for the publisher"
-
-# Observe the published-but-unacknowledged event on the events queue and
-# capture its eventId: the republication after the kill must reuse it. The
-# event payload carries walletId/kind, not the external transaction id, so
-# the match keys on this test's unique wallet and the BET kind.
-events_url=$($COMPOSE exec -T localstack sh -c 'awslocal sqs get-queue-url --queue-name wager-events.fifo 2>/dev/null' | awk -F'"' '/QueueUrl/{print $4}')
-[ -n "$events_url" ] || fail "events queue URL unavailable"
-observed="" event_id=""
-for _ in $(seq 1 90); do
-  received=$($COMPOSE exec -T localstack sh -c \
-    "awslocal sqs receive-message --queue-url '$events_url' --max-number-of-messages 1 --wait-time-seconds 1 2>/dev/null")
-  if echo "$received" | grep -q "$competingWallet" && echo "$received" | grep -q "BET"; then
-    observed=1
-    event_id=$(echo "$received" | jq -r '.Messages[0].Body | fromjson | .eventId' 2>/dev/null || true)
-    break
-  fi
-  # Drain older session messages (dev broker is disposable; the outbox DB
-  # stays auditable) so the FIFO cursor reaches the target group.
-  rid=$(echo "$received" | awk -F'"' '/ReceiptHandle/{print $4}')
-  [ -n "$rid" ] && $COMPOSE exec -T localstack sh -c \
-    "awslocal sqs delete-message --queue-url '$events_url' --receipt-handle '$rid'" >/dev/null 2>&1
-done
-[ -n "$observed" ] || fail "published event never observed on the events queue"
-[ -n "$event_id" ] || fail "could not extract eventId from the published event"
-echo "  precondition observed: event $event_id on the events queue, outbox ack still pending"
-$COMPOSE kill -s KILL api >/dev/null 2>&1
-echo "  three api processes killed AFTER the SQS send, BEFORE the outbox ack"
-# Recovery runs without the drill window: with the ack pause active the
-# publisher could never confirm within its publish timeout, and the backlog
-# would never drain. Restoring the config is part of the recovery itself.
+competingWallet=$(open_wallet 0.00 "$competingPlayer")
+fbody=$(jq -n --arg p "$competingPlayer" --arg w "$competingWallet" --arg e "fault-f-$runId" '{providerId:"provider-a",externalTransactionId:$e,playerId:$p,walletId:$w,roundId:"fault-f",gameId:"fortune-chimp",kind:"WIN",money:{amount:"30.00",currency:"BRL"}}')
+curl -sf -X POST "$GATEWAY_URL/wagering/transactions" -H "Authorization: Bearer $PROVIDER_TOKEN" -H "Idempotency-Key: fault-f-$runId" -H 'Content-Type: application/json' -d "$fbody" > "$work/f-result.json"
+transaction=$(jq -r .transactionId "$work/f-result.json")
+event_id=$(sql "SELECT event_id FROM outbox_events WHERE aggregate_id='$transaction' AND event_type='WagerTransactionProcessed'")
+[ -n "$event_id" ] || fail "target event absent"
+wait_log ".failpoint == \"after-send-before-ack\" and .eventId == \"$event_id\"" "$work/f-point.json"
+wait_log ".msg == \"outbox send accepted\" and .eventId == \"$event_id\" and .attempt == 1" "$work/f-before.json"
+assert "unacknowledged live lease, first attempt" 1 "$(sql "SELECT count(*) FROM outbox_events WHERE event_id='$event_id' AND published_at IS NULL AND leased_until > clock_timestamp() AND attempts=1")"
+sql "SELECT event_id, attempts, leased_by, leased_until, published_at, payload_json FROM outbox_events WHERE event_id='$event_id'"
+$COMPOSE ps -q api
+$COMPOSE kill -s KILL api >/dev/null
 export JUNGLE_TEST_PUBLISH_ACK_PAUSE=
-$COMPOSE up -d --force-recreate --no-deps api >/dev/null 2>&1
+$COMPOSE up -d --no-deps api >/dev/null 2>&1
 wait_replicas_healthy
-
-# The abandoned claim must be recovered and acknowledged by another publisher:
-# the outbox drains to zero without any manual intervention.
-deadline=$((SECONDS+180))
-while true; do
-  pending=$(curl -s "$GATEWAY_URL/metrics" | awk '/^jungle_outbox_pending /{print $2}')
-  if [ "$pending" = "0" ]; then break; fi
-  if [ $SECONDS -gt $deadline ]; then fail "outbox did not drain after restart (last: ${pending:-none})"; fi
-  sleep 3
+# Lease expires naturally in PostgreSQL; no test UPDATE and no clock manipulation.
+for _ in $(seq 1 90); do
+  [ "$(sql "SELECT count(*) FROM outbox_events WHERE event_id='$event_id' AND published_at IS NOT NULL AND attempts=2")" = 1 ] && break
+  sleep 1
 done
-echo "  outbox drained: pending=$pending"
-# The republished flow keeps the SAME eventId (FIFO dedup id = eventId): the
-# message reappears after the visibility timeout with the original identity.
-reobserved=""
-for _ in $(seq 1 60); do
-  received=$($COMPOSE exec -T localstack sh -c \
-    "awslocal sqs receive-message --queue-url '$events_url' --max-number-of-messages 1 --wait-time-seconds 1 2>/dev/null")
-  if echo "$received" | grep -q "$event_id"; then reobserved=1; break; fi
-  rid=$(echo "$received" | awk -F'"' '/ReceiptHandle/{print $4}')
-  [ -n "$rid" ] && $COMPOSE exec -T localstack sh -c \
-    "awslocal sqs delete-message --queue-url '$events_url' --receipt-handle '$rid'" >/dev/null 2>&1
-done
-[ -n "$reobserved" ] || fail "event $event_id never reappeared on the events queue"
-echo "  same eventId observed after recovery: $event_id"
-assert "publisher wallet balance after recovery" "30.00" "$(wallet_state "$competingWallet")"
-
-echo ""
+assert "new publisher confirmed second attempt" 1 "$(sql "SELECT count(*) FROM outbox_events WHERE event_id='$event_id' AND published_at IS NOT NULL AND attempts=2")"
+wait_log ".msg == \"outbox send accepted\" and .eventId == \"$event_id\" and .attempt == 2" "$work/f-after.json"
+assert "identical payload bytes across two accepted sends" "$(jq -r .payloadSHA256 "$work/f-before.json" | head -1)" "$(jq -r .payloadSHA256 "$work/f-after.json" | head -1)"
+sql "SELECT event_id, attempts, published_at FROM outbox_events WHERE event_id='$event_id'"
+assert "publisher wallet balance" 30.00 "$(wallet_state "$competingWallet")"
+assert "one ledger movement" 1 "$(ledger_count "$competingWallet")"
+assert "publisher reconciliation" true "$(consistent "$competingWallet")"
+# FIFO may deduplicate the second accepted send: two SDK success responses,
+# attempts=2 and identical hashes prove republication, not a second delivery.
 echo "=== TEST H: restart with data while a reference is still pending"
 hPlayer=$(python3 -c 'import uuid;print(uuid.uuid4())')
 hWallet=$(open_wallet 100.00 "$hPlayer")
@@ -320,8 +210,5 @@ assert "refund now processed" "PROCESSED" "$st"
 assert "ledger rows after cross-channel conclusion" "3" "$(ledger_count "$hWallet")"
 assert "reconciliation after pending reference" "true" "$(consistent "$hWallet")"
 
-rm -f /tmp/fault-wager-$runId.json /tmp/fault-h-$runId.json /tmp/fault-h-bet-$runId.json
-# Drill windows were already restored after each kill; the EXIT trap covers
-# early failures and Ctrl-C.
-echo ""
-echo "faults OK: kill-9 after commit before delete (redelivery replays once), kill-9 after publish before ack (same eventId redelivered, outbox drained) and restart with pending reference all account exactly once."
+
+echo 'faults OK: deterministic E/F and cross-channel reference recovery H'

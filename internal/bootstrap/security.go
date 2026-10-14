@@ -16,7 +16,7 @@ import (
 )
 
 func securityModule() fx.Option {
-	return fx.Module("security", fx.Provide(newAuthenticator), fx.Provide(observability.NewFinancialMetrics), fx.Invoke(registerBusinessRoutes))
+	return fx.Module("security", fx.Provide(newAuthenticator), fx.Invoke(registerBusinessRoutes))
 }
 func newAuthenticator(lifecycle fx.Lifecycle, cfg Config) (*oidcauth.Verifier, error) {
 	verifier, err := oidcauth.NewVerifier(oidcauth.Config{Issuer: cfg.OIDCIssuer, Audience: cfg.OIDCAudience})

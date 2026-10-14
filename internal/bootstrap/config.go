@@ -12,6 +12,7 @@ import (
 	oidcauth "github.com/hendelsantos/jungle-backend-challenge-go/internal/adapters/oidc"
 	sqsadapter "github.com/hendelsantos/jungle-backend-challenge-go/internal/adapters/sqs"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/application/command"
+	"github.com/hendelsantos/jungle-backend-challenge-go/internal/failpoint"
 )
 
 // Config contains only settings used by the current application.
@@ -90,6 +91,9 @@ func LoadConfig() (Config, error) {
 		if err := (oidcauth.Config{Issuer: cfg.OIDCIssuer, Audience: cfg.OIDCAudience}).Validate(); err != nil {
 			return Config{}, err
 		}
+	}
+	if !failpoint.Enabled && (os.Getenv("JUNGLE_TEST_POST_COMMIT_PAUSE") != "" || os.Getenv("JUNGLE_TEST_PUBLISH_ACK_PAUSE") != "") {
+		return Config{}, fmt.Errorf("crash failpoints require a faulttest build")
 	}
 	if text := os.Getenv("JUNGLE_TEST_POST_COMMIT_PAUSE"); text != "" {
 		d, err := time.ParseDuration(text)

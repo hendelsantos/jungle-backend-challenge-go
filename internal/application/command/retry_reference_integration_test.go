@@ -9,6 +9,7 @@ package command_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -307,4 +308,81 @@ func (transientWagerUpdates) InsertWagerTransaction(context.Context, wagering.St
 
 func (transientWagerUpdates) UpdateWagerTransaction(context.Context, wagering.State, ports.ReferenceSchedule) error {
 	return errors.New("transient schedule write failure")
+}
+
+// A real PostgreSQL row lock holds the worker while another writer advances
+// updated_at. The injected host clock stays behind that committed timestamp.
+func TestRetryReferenceWaitsForLockAndPreservesClockIntegration(t *testing.T) {
+	for _, expires := range []bool{false, true} {
+		t.Run(fmt.Sprint(expires), func(t *testing.T) {
+			f := newRetryFixture(t, time.Hour)
+			f.drainDueReferences(t)
+			walletID, playerID, _ := openWallet(t, f.create, "100.00")
+			suffix := uuid.NewString()
+			pending := f.refundBeforeBet(t, walletID, playerID, suffix)
+			if _, err := f.deps.ProcessWager(context.Background(), operation(wagering.Bet, walletID, playerID, "25.00", "ref-"+suffix)); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			tx, err := f.pool.Begin(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback(context.Background())
+			future := time.Now().UTC().Add(time.Second).Truncate(time.Microsecond)
+			if _, err := tx.Exec(ctx, "UPDATE wallets SET updated_at=$2 WHERE id=$1", walletID, future); err != nil {
+				t.Fatal(err)
+			}
+			f.retry.Now = func() time.Time { return future.Add(-time.Second) }
+			if expires {
+				f.retry.ReferenceTTL = 500 * time.Millisecond
+			}
+			done := make(chan error, 1)
+			go func() { _, err := f.retry.RetryDueReferences(ctx, 1); done <- err }()
+			// Confirm actual database lock contention before releasing the writer.
+			for {
+				var blocked bool
+				if err := f.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE cardinality(pg_blocking_pids(pid))>0 AND query LIKE '%FOR UPDATE%')").Scan(&blocked); err != nil {
+					t.Fatal(err)
+				}
+				if blocked {
+					break
+				}
+				select {
+				case err := <-done:
+					t.Fatalf("worker ended before blocking: %v", err)
+				case <-time.After(time.Millisecond):
+				}
+			}
+			if err := tx.Commit(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if err := <-done; err != nil {
+				t.Fatal(err)
+			}
+			state, err := postgres.NewWagerTransactionReader(f.pool).FindByID(ctx, "provider-a", pending.Request.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantBalance, wantRows := int64(10000), int64(3)
+			if expires {
+				wantBalance, wantRows = 7500, 2
+				if state.Status != wagering.Rejected || state.FailureCode != wagering.ReferenceNotFound {
+					t.Fatalf("TTL after lock: %+v", state)
+				}
+			} else if state.Status != wagering.Processed {
+				t.Fatalf("status: %s", state.Status)
+			}
+			if _, err := f.retry.RetryDueReferences(ctx, 1); err != nil {
+				t.Fatal(err)
+			}
+			if balance, _ := walletBalance(t, f.pool, walletID); balance != wantBalance {
+				t.Fatalf("balance=%d", balance)
+			}
+			if rows := countRows(t, f.pool, "SELECT count(*) FROM wallet_ledger_entries WHERE wallet_id=$1", walletID); int64(rows) != wantRows {
+				t.Fatalf("ledger=%d", rows)
+			}
+		})
+	}
 }

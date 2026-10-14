@@ -30,6 +30,7 @@ type ConsumeWagerDeps struct {
 	Now        func() time.Time
 	// Backoff spaces transaction retries; tests inject a zero duration.
 	Backoff func(attempt int) time.Duration
+	OnRetry func()
 }
 
 type ConsumeWagerInput struct {
@@ -87,6 +88,9 @@ func (d ConsumeWagerDeps) ConsumeWagerMessage(ctx context.Context, input Consume
 		}
 		if !errors.Is(err, ports.ErrRetryableTransaction) || attempt >= maxTransactionAttempts {
 			return ConsumeWagerResult{}, err
+		}
+		if d.OnRetry != nil {
+			d.OnRetry()
 		}
 		if err := sleepCtx(ctx, backoff(attempt)); err != nil {
 			return ConsumeWagerResult{}, err

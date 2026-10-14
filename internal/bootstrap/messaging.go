@@ -35,11 +35,13 @@ func newConsumeWagerDeps(
 	uow *postgres.UnitOfWork,
 	process command.ProcessWagerDeps,
 	inbox *postgres.InboxRepository,
+	finance *observability.FinancialMetrics,
 ) command.ConsumeWagerDeps {
 	return command.ConsumeWagerDeps{
 		UnitOfWork: uow,
 		Process:    process,
 		Inbox:      inbox,
+		OnRetry:    func() { finance.DbRetries.WithLabelValues("inbox_transaction").Inc() },
 		Now:        func() time.Time { return time.Now().UTC() },
 	}
 }

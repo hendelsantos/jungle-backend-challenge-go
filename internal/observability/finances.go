@@ -17,9 +17,10 @@ type FinancialMetrics struct {
 	Duration        *prometheus.HistogramVec // {kind} processing seconds
 	DbRetries       *prometheus.CounterVec   // {reason} transaction retries
 	Redeliveries    prometheus.Counter       // SQS messages consumed again
-	Dlq             prometheus.Counter       // messages copied to the DLQ
-	Reconciliations prometheus.Counter       // reconciliation runs
-	Divergences     prometheus.Counter       // reconciliation runs with difference
+	DlqFailures     prometheus.Counter
+	Dlq             prometheus.Counter // messages copied to the DLQ
+	Reconciliations prometheus.Counter // reconciliation runs
+	Divergences     prometheus.Counter // reconciliation runs with difference
 }
 
 var (
@@ -46,12 +47,13 @@ func NewFinancialMetrics() *FinancialMetrics {
 				Name: "jungle_wager_db_retries_total", Help: "PostgreSQL transaction retries per reason.",
 			}, []string{"reason"}),
 			Redeliveries:    counter("jungle_wager_sqs_redeliveries_total", "SQS messages consumed with a receive count above one."),
+			DlqFailures:     counter("jungle_wager_dlq_publish_failures_total", "Failed explicit DLQ copy attempts; source remains unacknowledged."),
 			Dlq:             counter("jungle_wager_dlq_total", "Messages copied to the dead-letter queue."),
 			Reconciliations: counter("jungle_wallet_reconciliations_total", "Wallet reconciliation runs."),
 			Divergences:     counter("jungle_wallet_reconciliation_divergences_total", "Reconciliation runs where ledger sum differs from balance."),
 		}
 		Prometheus.MustRegister(m.Operations, m.Replays, m.Conflicts, m.Duration, m.DbRetries,
-			m.Redeliveries, m.Dlq, m.Reconciliations, m.Divergences)
+			m.Redeliveries, m.Dlq, m.DlqFailures, m.Reconciliations, m.Divergences)
 		financeMetrics = m
 	})
 	return financeMetrics

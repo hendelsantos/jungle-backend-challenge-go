@@ -9,6 +9,8 @@ import (
 
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/adapters/postgres"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/application/command"
+	"github.com/hendelsantos/jungle-backend-challenge-go/internal/domain/wagering"
+	"github.com/hendelsantos/jungle-backend-challenge-go/internal/observability"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/workers"
 )
 
@@ -29,6 +31,7 @@ func newRetryReferenceDeps(
 	lookups *postgres.WagerTransactionReader,
 	ledgerRepository *postgres.LedgerRepository,
 	outbox *postgres.OutboxRepository,
+	finance *observability.FinancialMetrics,
 ) command.RetryReferenceDeps {
 	return command.RetryReferenceDeps{
 		UnitOfWork:   uow,
@@ -41,6 +44,10 @@ func newRetryReferenceDeps(
 		Now:          func() time.Time { return time.Now().UTC() },
 		NewID:        newUUID,
 		ReferenceTTL: cfg.ReferenceTTL,
+		OnConclusion: func(kind wagering.Kind, status wagering.Status) {
+			finance.Operations.WithLabelValues(string(kind), string(status)).Inc()
+		},
+		OnRetry: func() { finance.DbRetries.WithLabelValues("reference_transaction").Inc() },
 	}
 }
 

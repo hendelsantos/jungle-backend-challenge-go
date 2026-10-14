@@ -560,15 +560,16 @@ de processos. Fila de eventos provisionada não significa publisher implementado
 Métricas, dois publishers, reinícios, três processos e Compose de entrega ficam
 para os próximos incrementos.
 
-### Instrumentação de interrupções em revisão (13/10/2026)
+### Instrumentação de interrupções (14/10/2026)
 
-O Compose aceita pausas de teste entre commit/delete e publish/ack, de zero
-até um minuto, desativadas por padrão. A implementação atual usa `time.Sleep`,
-que não observa cancelamento durante a pausa; ela não altera o contrato
-financeiro e requer validação específica do lifecycle nos ensaios. O callback
-de métricas de referências ainda é chamado dentro da UnitOfWork e não está
-ligado ao bootstrap: é trabalho em andamento, não garantia de contagem após
-commit. Este checkpoint não encerra A03/A11.
+Build normal (`!faulttest`) recusa as variáveis de crash. Build `faulttest`
+bloqueia no ponto crítico até cancelamento do lifecycle; SIGKILL interrompe
+literalmente o processo. Não há temporizador que libere delete/ACK antes do
+observador. Logs e SQL comprovam a janela. O script exige ambiente descartável,
+mata os três processos e verifica inbox replay ou nova tentativa da outbox,
+comparando eventId e digest dos bytes enviados com sucesso ao SQS. Lease vence
+naturalmente, sem UPDATE de teste. SIGTERM libera o bloqueio sem reconhecer a
+mensagem/evento. Métricas continuam best-effort e nunca são prova de saldo.
 
 ### Limite operacional IAM (14/10/2026)
 
@@ -576,3 +577,17 @@ commit. Este checkpoint não encerra A03/A11.
 readiness, consumidor e publisher. Os papéis de `deployments/sqs/iam-policies.json`
 são templates para separação futura, não a topologia de permissões já implantada.
 A01 continua parcial; falta demonstrar negação efetiva pelo broker.
+
+### Correções de lifecycle e observabilidade (14/10/2026)
+
+Gauges dependentes de pool/store têm registry por handler; `Gatherers` combina
+esse registry com os contadores por processo. Aplicações Fx simultâneas ou
+sequenciais não retêm dependências umas das outras. Referências capturam o
+resultado dentro da transação e notificam somente após retorno bem-sucedido do
+commit. TTL é reavaliado depois do lock, usando horário monotônico em relação
+à carteira persistida. Bootstrap injeta métricas independentemente de OIDC.
+HTTP/SQS contam replay separadamente de novos resultados; uma pendência conta
+PENDING_REFERENCE e depois seu resultado terminal. Retries de inbox/referências
+são distintos por reason; falha de cópia à DLQ não incrementa entregas. Redrive
+automático do broker exige monitoramento do broker. Contadores não são duráveis:
+um crash após commit pode perder o incremento, portanto não substituem SQL.

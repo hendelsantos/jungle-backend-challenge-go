@@ -35,3 +35,9 @@ Nota de isolamento: o nome inicial `jungle-final-delivery` colidiu com um
 projeto parado (volume de 13/10). O primeiro `up` recriou containers e executou
 o job de migration (exit 0); ao detectar a data do volume, o projeto foi
 parado, sem remoção do volume. Os ensaios usam o novo projeto exclusivo.
+
+## Progresso validado
+
+A03/A07/A09/A11: correções e regressões direcionadas aprovadas; ver
+[evidências](audit/2026-10-14/README.md). A matriz inicial acima permanece
+como diagnóstico da base, não como estado final.

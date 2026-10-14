@@ -15,6 +15,7 @@ import (
 	"github.com/aws/smithy-go"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/application/command"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/application/ports"
+	"github.com/hendelsantos/jungle-backend-challenge-go/internal/failpoint"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/observability"
 )
 
@@ -127,8 +128,15 @@ func (c *Consumer) handle(parent context.Context, message types.Message) {
 		c.deadLetter(ctx, message, body, ErrUnauthorizedProducer)
 		return
 	}
+	started := time.Now()
 	result, err := c.Consume(ctx, input)
+	if c.Metrics != nil {
+		c.Metrics.Duration.WithLabelValues(string(input.Wager.Kind)).Observe(time.Since(started).Seconds())
+	}
 	if err != nil {
+		if c.Metrics != nil && errors.Is(err, ports.ErrIdempotencyConflict) {
+			c.Metrics.Conflicts.Inc()
+		}
 		if errors.Is(err, command.ErrPermanentMessage) {
 			c.deadLetter(ctx, message, body, err)
 			return
@@ -151,8 +159,9 @@ func (c *Consumer) handle(parent context.Context, message types.Message) {
 		c.changeVisibility(retryCtx, message, int32(1<<(count-1)))
 		return
 	}
-	if c.PostCommitPause > 0 {
-		time.Sleep(c.PostCommitPause)
+	if failpoint.Enabled && c.PostCommitPause > 0 {
+		failpoint.Hold(parent, c.Logger, "after-commit-before-delete", "messageId", input.MessageID, "sqsMessageId", aws.ToString(message.MessageId), "transactionId", result.TransactionID)
+		return
 	}
 	// Semantics mirror the HTTP boundary: a durable conclusion counts once in
 	// Operations; business replays and inbox replays (redelivery of an already
@@ -166,7 +175,7 @@ func (c *Consumer) handle(parent context.Context, message types.Message) {
 	}
 	if c.Logger != nil {
 		c.Logger.Info("wager message consumed",
-			"messageId", input.MessageID, "transactionId", result.TransactionID,
+			"messageId", input.MessageID, "sqsMessageId", aws.ToString(message.MessageId), "receiveCount", message.Attributes["ApproximateReceiveCount"], "correlationId", input.Wager.CorrelationID, "transactionId", result.TransactionID,
 			"providerId", input.Wager.ProviderID, "walletId", input.Wager.WalletID,
 			"status", result.Status, "inboxReplay", result.InboxReplay, "replay", result.Replay)
 	}
@@ -198,6 +207,9 @@ func (c *Consumer) deadLetter(ctx context.Context, message types.Message, body [
 		MessageAttributes:      message.MessageAttributes,
 	})
 	if err != nil {
+		if c.Metrics != nil {
+			c.Metrics.DlqFailures.Inc()
+		}
 		// Keep the original message: it will be redelivered and dead-lettered
 		// again, or the redrive policy will move it after maxReceiveCount.
 		c.logError(fmt.Sprintf("dead-letter send failed for %s", messageID), err)

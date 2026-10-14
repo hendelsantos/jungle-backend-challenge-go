@@ -3,6 +3,7 @@ package command
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -344,5 +345,54 @@ func TestReferenceBackoffSaturatesBeforeShifting(t *testing.T) {
 		if got := deps.referenceBackoff(tc.attempt); got != tc.want {
 			t.Errorf("attempt=%d: got %v, want %v", tc.attempt, got, tc.want)
 		}
+	}
+}
+
+type conclusionUoW struct {
+	commitErr error
+	committed bool
+}
+
+func (u *conclusionUoW) WithinTx(ctx context.Context, fn func(context.Context) error) error {
+	if err := fn(ctx); err != nil {
+		return err
+	}
+	if u.commitErr != nil {
+		return u.commitErr
+	}
+	u.committed = true
+	return nil
+}
+
+func TestReferenceConclusionOnlyAfterSuccessfulCommit(t *testing.T) {
+	for _, failed := range []bool{false, true} {
+		t.Run(fmt.Sprint(failed), func(t *testing.T) {
+			pending := pendingState(uuid.New(), uuid.New(), retryTime)
+			f := newRetryDeps(pending.Request.WalletID, pending.Request.PlayerID, ports.DuePendingReference{State: pending, ReferenceSchedule: ports.ReferenceSchedule{DeadlineAt: retryTime.Add(-time.Second), HasDeadline: true}})
+			uow := &conclusionUoW{}
+			if failed {
+				uow.commitErr = errors.New("commit failed")
+			}
+			deps := f.deps()
+			deps.UnitOfWork = uow
+			calls := 0
+			deps.OnConclusion = func(k wagering.Kind, s wagering.Status) {
+				if !uow.committed {
+					t.Fatal("metric emitted before commit")
+				}
+				if k != wagering.Refund || s != wagering.Rejected {
+					t.Fatalf("unexpected conclusion: %s %s", k, s)
+				}
+				calls++
+			}
+			_, err := deps.RetryDueReferences(context.Background(), 1)
+			if failed {
+				if err == nil || calls != 0 {
+					t.Fatalf("failed commit emitted metric: %v %d", err, calls)
+				}
+			} else if err != nil || calls != 1 {
+				t.Fatalf("successful commit: %v %d", err, calls)
+			}
+		})
 	}
 }

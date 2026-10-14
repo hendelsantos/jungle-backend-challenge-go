@@ -38,11 +38,12 @@ type RetryReferenceDeps struct {
 	// zero falls back to an exponential schedule capped at 5 minutes.
 	ReferenceBackoff func(attempt int) time.Duration
 	// OnConclusion, when set, is invoked once per pending reference that
-	// reaches a terminal status inside the committed unit of work (resumed
+	// reaches a terminal status after a successful commit (resumed
 	// PROCESSED/REJECTED or rejected by TTL). Reschedules never trigger it:
 	// the metric sink (e.g. jungle_wager_operations_total) counts exactly one
 	// durable conclusion per operation across channels.
 	OnConclusion func(kind wagering.Kind, status wagering.Status)
+	OnRetry      func()
 }
 
 // RetryDueReferences processes up to limit due pending references, one
@@ -80,16 +81,26 @@ func (d RetryReferenceDeps) RetryDueReferences(ctx context.Context, limit int) (
 func (d RetryReferenceDeps) retryOne(ctx context.Context, ttl time.Duration) (bool, error) {
 	for attempt := 1; ; attempt++ {
 		done := false
+		var kind wagering.Kind
+		var status wagering.Status
+		attemptDeps := d
+		attemptDeps.OnConclusion = func(k wagering.Kind, s wagering.Status) { kind, status = k, s }
 		err := d.UnitOfWork.WithinTx(ctx, func(ctx context.Context) error {
 			var err error
-			done, err = d.resumeOne(ctx, ttl)
+			done, err = attemptDeps.resumeOne(ctx, ttl)
 			return err
 		})
 		if err == nil {
+			if status != "" && d.OnConclusion != nil {
+				d.OnConclusion(kind, status)
+			}
 			return done, nil
 		}
 		if !errors.Is(err, ports.ErrRetryableTransaction) || attempt >= maxTransactionAttempts {
 			return false, err
+		}
+		if d.OnRetry != nil {
+			d.OnRetry()
 		}
 		if err := sleepCtx(ctx, defaultBackoff(attempt)); err != nil {
 			return false, err
@@ -130,7 +141,7 @@ func (d RetryReferenceDeps) resumeOne(ctx context.Context, ttl time.Duration) (b
 	}
 	schedule := ports.ReferenceSchedule{Attempts: item.Attempts, DeadlineAt: deadline, HasDeadline: true}
 
-	if now.After(deadline) {
+	expire := func() (bool, error) {
 		// The reference never arrived within the policy window: a definitive,
 		// auditable rejection. No wallet was read, so no result is invented.
 		if err := transaction.Reject(wagering.ReferenceNotFound, now); err != nil {
@@ -142,13 +153,14 @@ func (d RetryReferenceDeps) resumeOne(ctx context.Context, ttl time.Duration) (b
 		if err := d.insertRejectedEvent(ctx, transaction.Snapshot(), now); err != nil {
 			return false, err
 		}
-		// Best-effort signal after the last write of the unit of work: a
-		// commit failure here rolls everything back and the next claim
-		// retries — the counter approximates, never drives, the ledger.
 		if d.OnConclusion != nil {
 			d.OnConclusion(item.State.Request.Kind, wagering.Rejected)
 		}
 		return false, nil
+	}
+
+	if !now.Before(deadline) {
+		return expire()
 	}
 
 	locked, err := d.Wallets.LockWallet(ctx, item.State.Request.WalletID)
@@ -162,6 +174,9 @@ func (d RetryReferenceDeps) resumeOne(ctx context.Context, ttl time.Duration) (b
 	}
 	if locked.UpdatedAt.After(now) {
 		now = locked.UpdatedAt
+	}
+	if !now.Before(deadline) {
+		return expire()
 	}
 	w, err := wallet.Rehydrate(locked)
 	if err != nil {
@@ -214,8 +229,7 @@ func (d RetryReferenceDeps) resumeOne(ctx context.Context, ttl time.Duration) (b
 	if err := d.Wagers.UpdateWagerTransaction(ctx, snapshot, schedule); err != nil {
 		return false, err
 	}
-	// Best-effort signal after the last write of the unit of work (same
-	// approximation as the expiry path above).
+	// Capture the outcome; retryOne emits it only after the commit succeeds.
 	if d.OnConclusion != nil {
 		d.OnConclusion(snapshot.Request.Kind, snapshot.Status)
 	}

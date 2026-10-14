@@ -22,8 +22,11 @@ services:
     volumes:
       - jungle-postgres:/var/lib/postgresql/data
   migrate:
-    image: jungle-backend-go:delivery
-    build: .
+    image: ${JUNGLE_IMAGE:-jungle-backend-go:delivery}
+    build:
+      context: .
+      args:
+        GO_BUILD_TAGS: ${JUNGLE_BUILD_TAGS:-}
     restart: "no"
     depends_on:
       postgres:
@@ -66,8 +69,11 @@ services:
       timeout: 3s
       retries: 60
   api:
-    image: jungle-backend-go:delivery
-    build: .
+    image: ${JUNGLE_IMAGE:-jungle-backend-go:delivery}
+    build:
+      context: .
+      args:
+        GO_BUILD_TAGS: ${JUNGLE_BUILD_TAGS:-}
     # Three independent processes with their own connection pools gate the
     # concurrency criteria; the gateway round-robins across them.
     deploy:

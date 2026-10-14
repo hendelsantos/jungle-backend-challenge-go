@@ -17,6 +17,7 @@ import (
 func applicationModule() fx.Option {
 	return fx.Module("application",
 		fx.Provide(
+			observability.NewFinancialMetrics,
 			postgres.NewWalletRepository,
 			postgres.NewWagerTransactionRepository,
 			postgres.NewWagerTransactionReader,

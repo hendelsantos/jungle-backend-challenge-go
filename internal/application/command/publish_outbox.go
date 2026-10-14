@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/application/ports"
+	"github.com/hendelsantos/jungle-backend-challenge-go/internal/failpoint"
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/observability"
 )
 
@@ -62,8 +63,9 @@ func (d PublishOutboxDeps) PublishNext(parent context.Context) (bool, error) {
 		d.log("outbox publish failed", event, code)
 		return true, errors.Join(fmt.Errorf("publish outbox: %w", err), retryErr)
 	}
-	if d.PostSendPause > 0 {
-		time.Sleep(d.PostSendPause)
+	if failpoint.Enabled && d.PostSendPause > 0 {
+		failpoint.Hold(parent, d.Logger, "after-send-before-ack", "eventId", event.EventID, "leaseToken", event.LeaseToken, "attempt", event.Attempts)
+		return true, parent.Err()
 	}
 	if err := d.Outbox.MarkPublished(ctx, event.EventID, event.LeaseToken); err != nil {
 		d.Metrics.ConfirmationFailures.Inc()

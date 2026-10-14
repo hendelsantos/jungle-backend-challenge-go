@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"github.com/hendelsantos/jungle-backend-challenge-go/internal/observability"
 	"testing"
 	"time"
 
@@ -18,6 +19,7 @@ func TestWorkersModuleResolvesRetryAndWorker(t *testing.T) {
 			Config{ReferenceTTL: time.Hour, ReferenceWorkerInterval: 250 * time.Millisecond},
 		),
 		fx.Provide(
+			observability.NewFinancialMetrics,
 			newLogger,
 			postgres.NewPool, postgres.NewUnitOfWork,
 			postgres.NewWalletRepository, postgres.NewWagerTransactionRepository,

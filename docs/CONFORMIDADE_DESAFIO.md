@@ -198,3 +198,9 @@ casos/subtestes aprovados, zero falhas e zero casos ignorados.
 estado corrente. A01 permanece parcial: templates IAM revisados contra as
 chamadas, mas não aplicados; runtime usa uma identidade compartilhada para
 provisionamento/consumo/publicação. Controle HMAC não equivale a autorização SQS.
+
+A03: E/F/H agora comprovados com SIGKILL nos pontos bloqueados e comparação de
+identidades/digest. A07: lock real, relógio defasado e TTL pós-lock passam. A09:
+dois ciclos Fx reais passam sem collectors retendo banco encerrado. A11:
+conclusão observada pós-commit, replay separado e falha de DLQ distinta.
+[Evidências desta rodada](audit/2026-10-14/README.md).
