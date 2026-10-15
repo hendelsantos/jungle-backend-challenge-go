@@ -195,6 +195,16 @@ e chaves builtin forjadas, e SIGKILL perde todas as mensagens aceitas desde o
 último shutdown graceful. Migração interrompida; LocalStack permanece.
 Parecer e reprodução: [docs/AUDITORIA_MINISTACK_FINAL.md](docs/AUDITORIA_MINISTACK_FINAL.md).
 
+Para encerrar A01/A02 com evidência real existe a **homologação em AWS SQS
+gerenciado**: ambiente isolado em `compose.homolog.yaml` (PostgreSQL e Keycloak
+locais, broker gerenciado, sem endpoint hardcoded — `SQS_ENABLED=true` e o SDK
+resolve a região), quatro roles IAM de menor privilégio assumidas via STS,
+políticas de recurso nas filas e probes de aceitação versionados. Nenhum
+recurso AWS é criado sem autorização explícita do operador; procedimento,
+recursos, custos e limpeza em [docs/HOMOLOGACAO_AWS.md](docs/HOMOLOGACAO_AWS.md)
+e [docs/AUDITORIA_AWS_SQS_FINAL.md](docs/AUDITORIA_AWS_SQS_FINAL.md)
+(**pendente de execução autorizada**).
+
 [Validação do incremento](docs/audit/2026-10-14/sqs-runtime.md): integração real,
 reprovisionamento preservando mensagens, smoke com três APIs e limite de
 durabilidade novamente reproduzido após restart do LocalStack.

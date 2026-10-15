@@ -173,6 +173,8 @@ Não conceda permissões administrativas ao runtime para contornar a falha.
 `SQS_CONSUMER_PROFILE` e `SQS_PUBLISHER_PROFILE` selecionam perfis próprios;
 `SQS_PROVISIONER_PROFILE` pertence ao comando administrativo. Sem perfis, o SDK
 resolve a cadeia padrão. O erro de AccessDenied deve ser tratado na política da
-identidade correspondente. A01 só fecha com negações reais no broker.
+identidade correspondente. A01 só fecha com negações reais no broker; o caminho
+de encerramento é a homologação AWS SQS (`docs/HOMOLOGACAO_AWS.md`), que executa
+a matriz de autorização contra o serviço gerenciado (`scripts/test-aws-sqs-iam.sh`).
 Se as filas desapareceram no restart do LocalStack, o provisionador recria a
 infraestrutura, mas nenhuma mensagem perdida reaparece por esse procedimento.

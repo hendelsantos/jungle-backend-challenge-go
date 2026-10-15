@@ -15,8 +15,8 @@ Fonte normativa: [enunciado preservado](reference/README_DESAFIO.md).
 
 | Achado | Estado | Implementação, evidência e limite |
 | --- | --- | --- |
-| A01 | **PARCIAL** | Cadeia AWS sem fallback, token temporário, perfis/roles e HMAC testados. Provisionamento separado em `cmd/provision-sqs`; runtime usa clientes/perfis independentes para consumidor e publisher. Templates IAM corrigidos contra chamadas. Autorização real falhou no broker local, inclusive sob Deny. Separar clientes não comprova aplicação de permissões; não testada em AWS/plano pago. MiniStack 1.5.27 avaliado em POC isolada ([auditoria](AUDITORIA_MINISTACK_FINAL.md)): aplica IAM para usuários nomeados, mas aceita anônimo e chaves builtin forjadas — reprovado, migração interrompida. |
-| A02 | **ABERTO** | Persistência+volume em Community 4.14.0 não preservaram fila. No Compose, 14 mensagens aceitas foram perdidas; 38 registros continuaram publicados. Dois eventos pendentes durante pausa recuperaram normalmente. Readiness 503/200 comprovada. MiniStack 1.5.27 reprovado na mesma POC: graceful preserva 3/3 mensagens íntegras, SIGKILL perde todas as aceitas (`accepted=3 recovered=0 lost=3`). |
+| A01 | **PARCIAL** | Cadeia AWS sem fallback, token temporário, perfis/roles e HMAC testados. Provisionamento separado em `cmd/provision-sqs`; runtime usa clientes/perfis independentes para consumidor e publisher. Templates IAM corrigidos contra chamadas. Autorização real falhou no broker local, inclusive sob Deny. Separar clientes não comprova aplicação de permissões; não testada em AWS/plano pago. MiniStack 1.5.27 avaliado em POC isolada ([auditoria](AUDITORIA_MINISTACK_FINAL.md)): aplica IAM para usuários nomeados, mas aceita anônimo e chaves builtin forjadas — reprovado, migração interrompida. Homologação AWS SQS **preparada** (`compose.homolog.yaml`, roles STS, probes `tests/homolog`): pendente de autorização/execução. |
+| A02 | **ABERTO** | Persistência+volume em Community 4.14.0 não preservaram fila. No Compose, 14 mensagens aceitas foram perdidas; 38 registros continuaram publicados. Dois eventos pendentes durante pausa recuperaram normalmente. Readiness 503/200 comprovada. MiniStack 1.5.27 reprovado na mesma POC: graceful preserva 3/3 mensagens íntegras, SIGKILL perde todas as aceitas (`accepted=3 recovered=0 lost=3`). Homologação AWS SQS **preparada** (durabilidade de broker + recuperação de app + drills E/F/H): pendente de autorização/execução. |
 | A03 | **CORRIGIDO E TESTADO** | Build exclusiva faulttest; E/F bloqueiam no ponto crítico. SQL antes do SIGKILL; inbox replay com mesmo messageId; F com lease expirada naturalmente, attempts=2, eventId/digest iguais. H cruzando HTTP→SQS passou. |
 | A04 | **CORRIGIDO E TESTADO** | Todos os checks financeiros têm gate; negativos saem 99. Idempotência 2×1.00 e contenção com apenas duas apostas usam expectativas configuradas. SQL verifica todas as carteiras do runner. |
 | A05 | **CORRIGIDO E TESTADO** | Uma amostra por wager, counters agregados, taxa auxiliar separada. Sonda exige classes e contagens exatas de 200/400/401/403/409/422/500/timeout: dois erros em 1.000 operações. |
@@ -135,8 +135,8 @@ parecer atual. Nenhuma nota de avaliação foi inventada nesta revisão.
   Templates não são implantação; runtime agora apenas resolve filas e usa clientes separados.
   O substituto local candidato (MiniStack 1.5.27) foi avaliado em POC isolada e
   **reprovou os gates A01/A02** ([auditoria MiniStack](AUDITORIA_MINISTACK_FINAL.md));
-  migração interrompida. Restam LocalStack Pro/AWS real (não autorizados) ou a
-  limitação documentada.
+  migração interrompida. Homologação em AWS SQS gerenciado **preparada**
+  (ver [HOMOLOGACAO_AWS.md](HOMOLOGACAO_AWS.md)); execução pendente de autorização.
 - Durabilidade do broker local após restart. Não demonstrada uma configuração
   gratuita compatível; nenhum serviço pago/AWS real foi autorizado ou usado.
   MiniStack confirmou durabilidade apenas em shutdown graceful; SIGKILL perde

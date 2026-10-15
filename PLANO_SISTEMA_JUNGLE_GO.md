@@ -1418,3 +1418,43 @@ evita corrida no campo observado. Perguntas: por que um HTTP 200 do broker é
 evidência mais forte que o erro do SDK? Por que snapshot-no-shutdown não
 satisfaz durabilidade de mensagens aceitas? Por que a CI não pode rodar esses
 probes como gate de aprovação?
+
+### Homologação AWS SQS — preparação de A01/A02 (14/10/2026)
+
+Incrementos em HEAD `e4746f4`. Caminho de encerramento definido: **AWS SQS
+gerenciado** para autorização e durabilidade reais, sem substituir o Compose
+local (LocalStack permanece para desenvolvimento).
+
+1. **Endpoint opcional + gate `SQS_ENABLED`** (`e988707`): `sqsadapter.Config`
+   aceita endpoint vazio = serviço gerenciado da região; `NewClient` só fixa
+   `BaseEndpoint` com URL explícita. Gate: `true` força mensageria (AWS
+   gerenciado), `false` desliga mesmo com endpoint, vazio/auto preserva o
+   comportamento histórico. Testes unitários cobrem cada ramo; suíte completa
+   `-race` aprovada.
+2. **Ambiente de homologação** (`6eb882b`): `compose.homolog.yaml` (PostgreSQL,
+   Keycloak, 3 réplicas, gateway; sem LocalStack; credenciais AWS externas
+   montadas somente leitura; `SQS_PROVIDER_KEYS` em tempo de execução).
+   Scripts parametrizados: `aws-homolog-render.sh` (render local validado),
+   `aws-homolog-apply.sh` (cria 4 roles + 3 filas + políticas de recurso,
+   somente com `JUNGLE_HOMOLOG_CONFIRM=APPLY-HOMOLOG`), `aws-homolog-cleanup.sh`
+   (restrito ao prefixo/base). Documentação: `docs/HOMOLOGACAO_AWS.md`.
+3. **Probes de aceitação** (`3f7ce22`): `tests/homolog` (tag `awshomolog`) —
+   matriz IAM A01 com roles assumidas via STS e veredito real do broker;
+   durabilidade A02 de broker (redelivery com identidade, visibilidade, dedup,
+   DLQ) e de aplicação (débito único via inbox replay, republicação outbox com
+   mesmo eventId/payload). `scripts/fault-homolog.sh` espelha E/F/H matando só
+   as réplicas. `send-wager` não cai para localhost com `SQS_ENABLED=true`.
+   CI compila/veta os probes; nunca os executa. `go mod tidy`: sts/stscreds
+   viram dependências diretas.
+
+**Nenhum recurso AWS foi criado.** Próximo passo bloqueado: autorização do
+operador para `aws-homolog-apply.sh`, execução dos probes e do fault de
+homologação, e registro das evidências em `docs/AUDITORIA_AWS_SQS_FINAL.md`.
+
+Conceitos Go: `stscreds.AssumeRoleProvider` dá credenciais temporárias por role;
+a decisão do broker é registrada via transporte com status HTTP + código
+smithy; o gate de módulo Fx é resolvido duas vezes (composição e validação) com
+fallback seguro. Perguntas: por que assumir roles via STS é preferível a access
+keys de longa duração em homologação? Por que o gate `SQS_ENABLED` precisa de
+três estados (auto/true/false) em vez de um booleano? Por que a política de
+recurso da fila exige que a limpeza assuma a role de administração?

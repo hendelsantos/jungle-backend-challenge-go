@@ -131,3 +131,16 @@ aceitas desde o último shutdown graceful. Migração interrompida; o MiniStack
 não entra no Compose de entrega. Se usado para desenvolvimento, manter
 restrito ao loopback. A CI apenas compila os probes; nunca os executa como
 aprovação.
+
+## Homologação AWS SQS — 14/10/2026 (preparada, não executada)
+
+O caminho de encerramento de A01/A02 é a homologação contra o **SQS gerenciado
+real**: quatro roles IAM de menor privilégio assumidas via STS (sem access keys
+de longa duração), políticas de recurso `Deny` nas filas para qualquer
+principal fora dos papéis, e probes de aceitação (`tests/homolog`, tag
+`awshomolog`, somente compilados na CI) que registram a decisão real do broker.
+Provisionamento via scripts com confirmação explícita (`JUNGLE_HOMOLOG_CONFIRM`),
+limpeza restrita ao prefixo de homologação, nenhum segredo versionado. Detalhes
+em [HOMOLOGACAO_AWS.md](HOMOLOGACAO_AWS.md) e
+[AUDITORIA_AWS_SQS_FINAL.md](AUDITORIA_AWS_SQS_FINAL.md). **Nenhum recurso AWS
+foi criado neste incremento; a execução aguarda autorização do operador.**
