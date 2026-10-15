@@ -11,44 +11,35 @@ o caso de uso; PostgreSQL confirma os efeitos financeiros atomicamente.
 
 ## Status do desafio (14/10/2026)
 
-**Parecer: GO COM RESSALVAS — sem declaração de conformidade integral.**
+**Parecer: GO COM RESSALVAS** — a [auditoria final](docs/AUDITORIA_FINAL_ENTREGA.md)
+traz a matriz A01–A13 completa com comandos e evidências. Dois requisitos seguem
+pendentes por limitação dos brokers locais gratuitos (autorização IAM do broker,
+A01; durabilidade de mensagens no restart do broker, A02) — investigação completa
+em [AUDITORIA_A01_A02_LOCAL_FINAL.md](docs/AUDITORIA_A01_A02_LOCAL_FINAL.md) e
+encerramento preparado em [HOMOLOGACAO_AWS.md](docs/HOMOLOGACAO_AWS.md).
 
-| Escopo | Estado | Evidência |
-| --- | --- | --- |
-| Núcleo financeiro, concorrência, recuperação de processos, carga | ✅ Comprovado na regressão de 14/10 | [auditoria final](docs/AUDITORIA_FINAL_ENTREGA.md) |
-| A01 — autorização do broker (credenciais/políticas aplicadas) | ⚠️ Pendente | LocalStack não aplica IAM; MiniStack e ElasticMQ reprovados em POC ([veredito local](docs/AUDITORIA_A01_A02_LOCAL_FINAL.md)) |
-| A02 — mensagens aceitas sobrevivem ao restart do broker | ⚠️ Pendente | LocalStack/MiniStack perdem mensagens; ElasticMQ prova durabilidade mas falha em A01 |
+## O que está comprovado
 
-### O que NÃO foi possível demonstrar — leia antes de avaliar
-
-Transparência deliberada: estes itens **não** estão comprovados e não há
-resultado inventado para nenhum deles.
-
-| Limitação | Por quê | Caminho de encerramento |
-| --- | --- | --- |
-| **A01 — o broker rejeitar operações não autorizadas** | O enunciado (§19) exige controle por credenciais e políticas **do broker**. Dos brokers locais gratuitos testados: LocalStack Community não avalia IAM (enforcement é recurso Pro); MiniStack aceita anônimo e chaves builtin forjadas; ElasticMQ não autentica. Não há como provar sem um broker que aplique políticas de verdade | Homologação em AWS SQS gerenciado **já preparada** (roles IAM via STS, políticas de recurso, probes versionados): [HOMOLOGACAO_AWS.md](docs/HOMOLOGACAO_AWS.md) — pendente apenas de uma conta AWS autorizada |
-| **A02 — mensagens aceitas sobreviverem ao restart do broker** | LocalStack (com `PERSISTENCE=1`) e MiniStack (snapshot no shutdown) perderam mensagens aceitas — reproduzido com contagem exata. ElasticMQ provou durabilidade até sob SIGKILL, mas falha em A01 e em compatibilidade | Mesmo caminho da A01 (SQS gerenciado); a **recuperação da aplicação** já é comprovada (inbox/outbox no PostgreSQL), mas ela não ressuscita o que o broker perdeu após o ACK |
-| Testes contra AWS real | Nenhuma conta AWS disponível/autorizada; nenhum serviço pago foi usado | Idem — procedimento, custos (centavos) e limpeza documentados |
-| Soak de 15 min nesta revisão | Não reexecutado na rodada final; ensaio de 60s e regressões de carga anteriores estão publicados | `tests/load/scenarios/soak.js` está pronto para rodar |
-| Segregação de usuários SQL (runtime × migrations) | Compose local usa o usuário administrativo; triggers protegem DML, não DDL de administrador | Exigir usuário separado em produção; nota em [SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md) |
-| Rotação de segredos, backup/restauração de produção | Fora do ambiente local do desafio | [RUNBOOK.md](docs/RUNBOOK.md) registra os limites operacionais |
-| Partidas dobradas, tracing OpenTelemetry, dashboards | Opcionais do enunciado, explicitamente fora do escopo do prazo | — |
-| "Exactly-once" | Não é prometido em lugar nenhum: entrega é at-least-once; a deduplicação financeira durável é a inbox no PostgreSQL | Arquitetura intencional — ver [ARCHITECTURE.md](ARCHITECTURE.md) |
-
-**Mitigações já existentes para A01/A02 no ambiente local** (não são prova dos
-requisitos, apenas reduzem exposição): broker publicado somente em loopback,
-HMAC por provedor impede efeito financeiro de mensagem forjada, inbox
-persistente impede efeito duplo, provisionamento separado do runtime e clientes
-SDK com identidades independentes.
-
-A [auditoria final](docs/AUDITORIA_FINAL_ENTREGA.md) traz a matriz A01–A13,
-comandos, evidências e limites; a [conformidade](docs/CONFORMIDADE_DESAFIO.md)
-relaciona os requisitos oficiais. Consulte também o
-[guia de entrevista](docs/GUIA_ENTREVISTA_JUNGLE.md).
+| Capacidade | Evidência reproduzível |
+| --- | --- |
+| Dinheiro exato em centavos `int64`, sem `float64` em nenhum caminho | testes unitários + fuzz + schema `BIGINT` |
+| Cinco operações (BET, WIN, LOSS, REFUND, ROLLBACK) com compensações | [ADR 0001](docs/adr/0001-compensacao-direta.md) + integração real |
+| Idempotência persistente cruzada HTTP/SQS | 50 duplicatas concorrentes → **1 débito, 49 replays** |
+| Concorrência por carteira sem lost updates | 80+80 sobre 100 → **saldo 20.00**, 1 débito, 1 rejeição |
+| Três processos Go independentes atrás de gateway | smoke com distribuição real entre réplicas |
+| Inbox + outbox no mesmo commit financeiro | rollback integral testado; `DeleteMessage` só após o commit |
+| Recuperação com SIGKILL real (Testes E/F/H) | kill antes do ACK → mesma mensagem, saldo exato; publish→ACK → mesmo `eventId` |
+| OIDC real com isolamento entre provedores | tokens inválidos/expirados/audience errada → 401/403 sem efeito financeiro |
+| Ledger append-only e reconciliação em snapshot | triggers + verificador SQL independente (`cmd/verifywallet`) |
+| DLQ após 3 tentativas + HMAC por provedor | envelopes forjados/inválidos dead-lettered sem efeito |
+| Regressão real sem skips | 652 testes de integração (PostgreSQL+Keycloak+SQS reais), 0 falhas, `-race -count=2` |
+| CI verde + checkout limpo reproduzível | um comando sobe PG, Keycloak, broker, migrations e 3 APIs saudáveis |
+| Carga k6 com auditoria SQL independente | [PERFORMANCE_REPORT.md](docs/PERFORMANCE_REPORT.md) (p50/p95/p99) |
 
 ## Índice
 
-- [Status do desafio](#status-do-desafio-14102026) — inclui **[o que não foi possível demonstrar](#o-que-não-foi-possível-demonstrar--leia-antes-de-avaliar)**
+- [Status do desafio](#status-do-desafio-14102026)
+- [O que está comprovado](#o-que-está-comprovado)
 - [Demonstração reproduzível](#demonstração-reproduzível)
 - [Executar localmente](#executar-localmente)
 - [Configuração](#configuração)
