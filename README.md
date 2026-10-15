@@ -1,23 +1,45 @@
 # Jungle Backend Go
 
+[![ci](https://github.com/hendelsantos/jungle-backend-challenge-go/actions/workflows/ci.yml/badge.svg)](https://github.com/hendelsantos/jungle-backend-challenge-go/actions/workflows/ci.yml)
+
 Solução do [desafio de processamento distribuído de apostas](https://github.com/junglegaming/backend-challenge-go) da Jungle Gaming: backend financeiro distribuído em Go com integridade demonstrável.
-
-**Parecer atual: NO-GO para conformidade integral.** O núcleo financeiro e os
-cenários de concorrência/recuperação passaram na regressão de 14/10/2026, mas o
-LocalStack Community 4.14.0 não aplicou autorização IAM e perdeu mensagens já
-aceitas após restart. A outbox recupera publicações pendentes; não recupera
-sozinha a perda posterior do armazenamento do broker. Sem AWS real ou plano
-pago autorizado, esses requisitos continuam pendentes.
-
-A [auditoria final](docs/AUDITORIA_FINAL_ENTREGA.md) traz a matriz A01–A13,
-comandos, evidências e limites; a [conformidade](docs/CONFORMIDADE_DESAFIO.md)
-relaciona os requisitos oficiais. As auditorias antigas permanecem como
-histórico. Consulte também o [guia de entrevista](docs/GUIA_ENTREVISTA_JUNGLE.md).
 
 A aplicação implementa BET, WIN, LOSS, REFUND e ROLLBACK, dinheiro exato,
 idempotência persistente, ledger append-only, OIDC/Keycloak, inbox/outbox,
 worker de referências e três processos Go independentes. HTTP/SQS compartilham
 o caso de uso; PostgreSQL confirma os efeitos financeiros atomicamente.
+
+## Status do desafio (14/10/2026)
+
+**Parecer: GO COM RESSALVAS — sem declaração de conformidade integral.**
+
+| Escopo | Estado | Evidência |
+| --- | --- | --- |
+| Núcleo financeiro, concorrência, recuperação de processos, carga | ✅ Comprovado na regressão de 14/10 | [auditoria final](docs/AUDITORIA_FINAL_ENTREGA.md) |
+| A01 — autorização do broker (credenciais/políticas aplicadas) | ⚠️ Pendente | LocalStack não aplica IAM; MiniStack e ElasticMQ reprovados em POC ([veredito local](docs/AUDITORIA_A01_A02_LOCAL_FINAL.md)) |
+| A02 — mensagens aceitas sobrevivem ao restart do broker | ⚠️ Pendente | LocalStack/MiniStack perdem mensagens; ElasticMQ prova durabilidade mas falha em A01 |
+
+A [auditoria final](docs/AUDITORIA_FINAL_ENTREGA.md) traz a matriz A01–A13,
+comandos, evidências e limites; a [conformidade](docs/CONFORMIDADE_DESAFIO.md)
+relaciona os requisitos oficiais. O encerramento comprovável de A01/A02 está
+**preparado** via homologação em AWS SQS gerenciado
+([HOMOLOGACAO_AWS.md](docs/HOMOLOGACAO_AWS.md)), pendente de conta/autorização.
+Consulte também o [guia de entrevista](docs/GUIA_ENTREVISTA_JUNGLE.md).
+
+## Índice
+
+- [Demonstração reproduzível](#demonstração-reproduzível)
+- [Executar localmente](#executar-localmente)
+- [Configuração](#configuração)
+- [Dependências locais de desenvolvimento](#dependências-locais-de-desenvolvimento)
+- [Entrega com Compose (três processos)](#entrega-com-compose-três-processos)
+- [Mensageria SQS](#mensageria-sqs)
+- [API autenticada](#api-autenticada)
+- [Testes](#testes)
+- [Arquitetura e decisões](#arquitetura-e-decisões)
+- [Organização do repositório](#organização-do-repositório)
+- [Documentação](#documentação)
+- [Enunciado original](#enunciado-original)
 
 ## Demonstração reproduzível
 
@@ -46,7 +68,7 @@ no Compose são fictícios e exclusivos de desenvolvimento.
 Ao terminar, **somente para esse projeto descartável**, a limpeza destrutiva
 é `docker compose -f docker-compose.yml down -v`; apaga seu volume de teste.
 Para manter os dados, use `stop`. Nunca executar limpeza contra um projeto
-preexistente. Para detalhamento de configuração, API e integração, siga abaixo.
+preexistente.
 
 ## Executar localmente
 
@@ -77,7 +99,8 @@ Encerre com `Ctrl+C` ou `SIGTERM`. O servidor aguarda requisições em andamento
 | `OIDC_AUDIENCE` | vazia | Audience exigida nos access tokens (ex.: `jungle-api`). Obrigatória junto com `OIDC_ISSUER` |
 | `REFERENCE_TTL` | `24h` | Prazo máximo de espera por uma referência ausente; esgotado, a operação é rejeitada com `REFERENCE_NOT_FOUND` |
 | `REFERENCE_WORKER_INTERVAL` | `1s` | Intervalo de polling do worker de referências (ativo quando `DATABASE_URL` está definida) |
-| `SQS_ENDPOINT_URL` | vazia | Endpoint LocalStack, ex.: `http://localhost:4566`; habilita o consumidor e exige banco e chaves de produtores |
+| `SQS_ENABLED` | `auto` | Gate da mensageria: `auto`/vazio ativa SQS quando `SQS_ENDPOINT_URL` está definida; `true` força (endpoint vazio = AWS SQS gerenciado da região — homologação); `false` desliga mesmo com endpoint |
+| `SQS_ENDPOINT_URL` | vazia | Endpoint LocalStack, ex.: `http://localhost:4566`; no modo `auto` habilita o consumidor e exige banco e chaves de produtores |
 | `SQS_CONSUMER_PROFILE` / `SQS_PUBLISHER_PROFILE` | vazios | Perfis AWS independentes do consumidor e publisher; vazios usam a cadeia padrão. Em ambiente com IAM, configure identidades restritas distintas |
 | `SQS_PROVISIONER_PROFILE` | vazio | Perfil exclusivo do comando administrativo `provision-sqs` |
 | `SQS_REGION` | `us-east-1` | Região do broker; credenciais vêm da cadeia padrão do SDK AWS |
@@ -85,6 +108,8 @@ Encerre com `Ctrl+C` ou `SIGTERM`. O servidor aguarda requisições em andamento
 | `AWS_SESSION_TOKEN` | opcional | Token de credenciais temporárias; deixar vazio no exemplo local `test` / `test` |
 | `SQS_PROVIDER_KEYS` | obrigatória com SQS | Objeto JSON `providerId → chave HMAC` (mínimo 32 bytes por chave) |
 | `SQS_QUEUE_PREFIX` | vazio | Opcional para testes isolados: até 32 letras, dígitos, `_` ou `-`; nomes oficiais por padrão |
+| `PG_POOL_MAX_CONNS` | default pgx | 1–100; o Compose de entrega adota 24 (ver ADR 0002) |
+| `OUTBOX_WORKERS` | `1` | 1–16 publishers concorrentes por réplica; o Compose de entrega adota 3 |
 
 A aplicação lê variáveis do processo. `.env` não é carregado automaticamente. Para usar o exemplo local:
 
@@ -105,8 +130,8 @@ Configuração inválida ou porta ocupada impede a inicialização. `/health/liv
 ```sh
 docker compose -f compose.dev.yaml up -d   # postgres :55432, keycloak :58080, LocalStack :4566
 ```
-Neste incremento o harness aplica as migrations reais em um banco vazio. O runner
-oficial é o comando `migrate`:
+
+O runner oficial de schema é o comando `migrate`:
 
 ```sh
 export DATABASE_URL='postgres://jungle:jungle-local@localhost:55432/jungle?sslmode=disable'
@@ -119,12 +144,11 @@ make run
 
 `make migrate-down N=1` é um rollback **destrutivo** da última migration —
 NÃO está no fluxo acima de propósito: usar apenas em banco de desenvolvimento
-disponível e reaplicar com `make migrate-up` antes de iniciar a aplicação
+descartável e reaplicar com `make migrate-up` antes de iniciar a aplicação
 (remover a migration de inbox/outbox deixa o runtime sem as estruturas
 financeiras).
 
-O harness também cria registros de teste com identidades únicas. A aplicação usa
-`DATABASE_URL`; `TEST_DATABASE_URL` é exclusivo dos testes.
+A aplicação usa `DATABASE_URL`; `TEST_DATABASE_URL` é exclusivo dos testes.
 
 ## Entrega com Compose (três processos)
 
@@ -139,8 +163,9 @@ docker compose -f docker-compose.yml ps    # gateway, api-1/2/3, keycloak, local
 ```
 
 Portas publicadas (apenas loopback):
+
 - gateway `9080` → três réplicas (upstream resolvido por request no DNS do Docker);
-- IdP `59080` → Keycloak publico da máquina; o issuer validado pelas réplicas é
+- IdP `59080` → Keycloak público da máquina; o issuer validado pelas réplicas é
   `http://keycloak:8080/realms/jungle` (divisão dev permitida pelo §6.2);
 - PostgreSQL `59532` em loopback, para o verificador independente.
 
@@ -160,7 +185,9 @@ jungle-delivery-api-1|2|3`). As chaves SQS, segredos do Keycloak e credenciais
 do banco são exclusivos de desenvolvimento — nunca publicar o ambiente. Para
 zerar, `docker compose -f docker-compose.yml down -v`.
 
-## Provisionamento SQS separado
+## Mensageria SQS
+
+### Provisionamento separado
 
 A API não cria nem configura filas. `cmd/provision-sqs` usa a cadeia AWS do SDK
 Go v2 e cria/reconcilia DLQ, entrada e eventos FIFO. No Compose, o job termina
@@ -183,21 +210,19 @@ processo Go. Perfis vazios preservam a cadeia padrão; dois clientes sem perfis
 distintos podem resolver a mesma identidade e não comprovam menor privilégio.
 As políticas de quatro papéis estão em `deployments/sqs/iam-policies.json`.
 
+### Brokers avaliados (A01/A02)
+
 O Compose LocalStack fornece identidades fictícias explícitas em configurações
 locais, sem arquivo de credenciais versionado. **LocalStack Community não aplica
 essas permissões**: separação do código não encerra A01. A perda de mensagens
 após restart continua A02; recriar filas exige reexecutar o provisionador e
 não recupera mensagens já confirmadas. Não remover volumes para recuperar.
 
-O substituto local avaliado (MiniStack 1.5.27, POC isolada em
-`compose.ministack.yaml`) **reprovou os dois gates**: aceita operações anônimas
-e chaves builtin forjadas, e SIGKILL perde todas as mensagens aceitas desde o
-último shutdown graceful. Migração interrompida; LocalStack permanece.
-Parecer e reprodução: [docs/AUDITORIA_MINISTACK_FINAL.md](docs/AUDITORIA_MINISTACK_FINAL.md).
-O ElasticMQ 1.7.1 também foi provado: tem durabilidade real (H2 por eventos,
-sobrevive a SIGKILL), mas **não autentica** (anônimo/forjado aceitos) e desvia
-do SQS em compatibilidade — A01/A02 permanecem sem solução local gratuita
-([docs/AUDITORIA_A01_A02_LOCAL_FINAL.md](docs/AUDITORIA_A01_A02_LOCAL_FINAL.md)).
+| Broker local gratuito | A01 (autorização) | A02 (durabilidade) | Parecer |
+| --- | --- | --- | --- |
+| LocalStack Community 4.14.0 | ❌ sem enforcement | ❌ perde mensagens no restart | mantido na entrega |
+| MiniStack 1.5.27 | ❌ aceita anônimo/builtin forjado | ❌ SIGKILL perde tudo (snapshot no shutdown) | [reprovado](docs/AUDITORIA_MINISTACK_FINAL.md) |
+| ElasticMQ 1.7.1 | ❌ não autentica | ✅ H2 por eventos sobrevive a SIGKILL | [reprovado p/ A01 + compat.](docs/AUDITORIA_A01_A02_LOCAL_FINAL.md) |
 
 Para encerrar A01/A02 com evidência real existe a **homologação em AWS SQS
 gerenciado**: ambiente isolado em `compose.homolog.yaml` (PostgreSQL e Keycloak
@@ -209,50 +234,75 @@ recursos, custos e limpeza em [docs/HOMOLOGACAO_AWS.md](docs/HOMOLOGACAO_AWS.md)
 e [docs/AUDITORIA_AWS_SQS_FINAL.md](docs/AUDITORIA_AWS_SQS_FINAL.md)
 (**pendente de execução autorizada**).
 
-[Validação do incremento](docs/audit/2026-10-14/sqs-runtime.md): integração real,
-reprovisionamento preservando mensagens, smoke com três APIs e limite de
-durabilidade novamente reproduzido após restart do LocalStack.
+### Enviar uma aposta por SQS em desenvolvimento
 
-## Testes de carga com k6
+Salve o envelope oficial em `/tmp/wager.json`, usando carteira e jogador criados
+pelo endpoint interno. Todos os valores monetários são strings:
 
-A suíte de performance em `tests/load/` mede o ambiente de entrega com três
-réplicas reais e fecha cada cenário com verificação financeira **independente**
-(SQL somente leitura via `cmd/verifywallet`, publicado em `127.0.0.1:59532`).
-Pré-requisitos e execução em [`tests/load/README.md`](tests/load/README.md);
-resultados reais, tabelas p50/p95/p99 e análise de gargalos em
-[docs/PERFORMANCE_REPORT.md](docs/PERFORMANCE_REPORT.md):
-
-```sh
-cd tests/load
-k6 run scenarios/smoke.js          # saneamento: aborta se o ambiente não estiver saudável
-k6 run scenarios/ramp-up.js        # 10→25→50→100 VUs com carteiras exclusivas por VU
-k6 run scenarios/contention.js     # 50 BETs de 30.00 em burst → 33/17, saldo 10.00 auditável
-k6 run scenarios/idempotency.js    # 50 idênticas → 1 débito, 49 replays
-k6 run scenarios/multiwallet.js    # ciclo BET/WIN/LOSS/REFUND/ROLLBACK por carteira
-k6 run scenarios/soak.js           # 15 min com reconciliação periódica ao vivo
+```json
+{
+  "messageId": "msg-exemplo-001",
+  "type": "WagerTransactionRequested",
+  "occurredAt": "2026-10-12T12:00:00Z",
+  "data": {
+    "providerId": "provider-a",
+    "externalTransactionId": "bet-exemplo-001",
+    "idempotencyKey": "provider-a:bet-exemplo-001",
+    "playerId": "SUBSTITUA-PELO-UUID-DO-JOGADOR",
+    "walletId": "SUBSTITUA-PELO-UUID-DA-CARTEIRA",
+    "roundId": "round-1",
+    "gameId": "fortune-chimp",
+    "kind": "BET",
+    "money": {"amount": "25.00", "currency": "BRL"}
+  }
+}
 ```
 
-## Falhas literais (Testes E/F/H)
-
-Use um projeto Compose **descartável e isolado**, com `COMPOSE_PROJECT_NAME`
-explícito e as portas correspondentes em `GATEWAY_URL`, `KEYCLOAK_URL` e `SQS_URL`.
-Após subir o ambiente:
+O produtor de desenvolvimento assina e envia o corpo sem alterá-lo:
 
 ```sh
-FAULT_DISPOSABLE=1 bash scripts/fault.sh
+AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_SESSION_TOKEN= \
+SQS_ENDPOINT_URL=http://localhost:4566 \
+SQS_PROVIDER_KEY=local-provider-a-signing-key-32-bytes-minimum \
+go run ./cmd/send-wager -provider provider-a -file /tmp/wager.json
+
+# Inspecionar filas/DLQ no broker local:
+docker compose -f compose.dev.yaml exec localstack awslocal sqs list-queues
+# Copie a URL da DLQ retornada:
+docker compose -f compose.dev.yaml exec localstack awslocal sqs receive-message \
+  --queue-url URL-DA-DLQ --message-attribute-names All
 ```
 
-O script compila uma imagem separada com a tag Go `faulttest`; a imagem normal
-recusa a configuração dos failpoints. E bloqueia após commit da inbox e antes
-do delete, exige o registro SQL e mata os três processos; após reinício exige
-`inboxReplay=true`, mesmo messageId e receive count maior que um. F bloqueia
-após SendMessage aceito, verifica lease ainda válida e ACK ausente, mata os
-processos e exige tentativa 2 após expiração natural, mesmo eventId e SHA-256
-do payload nas duas chamadas aceitas. A deduplicação FIFO pode suprimir a
-segunda entrega. H reinicia com referência pendente e conclui por HTTP→SQS.
-Saldo, ledger e reconciliação são conferidos. Janela não alcançada reprova o
-script. A saída registra IDs, tentativas e evidências; o EXIT restaura a imagem
-normal. O broker local está publicado somente em loopback (porta padrão 49570).
+A assinatura HMAC-SHA256 vai nos atributos SQS `providerId` e `signature`; o
+provedor autenticado precisa corresponder ao corpo. Chaves diferentes isolam os
+provedores. O LocalStack fica em porta de loopback; sua configuração local não
+comprova autorização IAM. Não exponha esse broker de desenvolvimento como um
+serviço de produção. Os valores publicados aqui são exclusivamente de teste.
+
+`MessageGroupId` é o UUID da carteira. O produtor usa SHA-256 do corpo como
+`MessageDeduplicationId`; a deduplicação por conteúdo do broker fica desativada.
+A deduplicação financeira é permanente no PostgreSQL, independente da janela
+FIFO: a mesma aposta por HTTP e SQS produz um único efeito. Use `messageId`
+globalmente único (preferencialmente UUID) e reenvie os mesmos bytes para replay
+da inbox. Alterar espaços também altera seu hash; o hash financeiro separado
+continua canônico e independente dos metadados de transporte.
+
+### Política operacional do consumidor
+
+- Long polling de 10s; um item por chamada; visibilidade de 30s; processamento e
+  confirmação limitados a 10s. Uma falha retorna para retry em 1s, 2s e 4s;
+  após três recebimentos, o redrive do broker encaminha à DLQ.
+- Envelope inválido, assinatura ausente/divergente, operação inválida ou conflito
+  de identidade são permanentes: copiar à DLQ e só então remover da entrada.
+  Falha nessa cópia conserva a mensagem original. Carteira ainda inexistente e
+  falhas de infraestrutura seguem retry limitado. Rejeição de negócio confirmada
+  (`REJECTED`) é terminal, persistida na inbox e removida sem ir à DLQ.
+- Carteira, operação, ledger, outbox e conclusão da inbox compartilham um commit.
+  `DeleteMessage` só ocorre depois dele. Resultado de commit desconhecido conserva
+  a mensagem; reentrega consulta a identidade persistida sem novo débito.
+- `SIGTERM` cancela polling e trabalho ativo; transações não confirmadas fazem
+  rollback e receipts conhecidos têm visibilidade liberada. Um receive cancelado
+  cujo receipt não chegou pode aguardar os 30s de visibilidade para reaparecer.
 
 ## API autenticada
 
@@ -308,34 +358,17 @@ Respostas distinguíveis do contrato (corpo sempre traz `error.code` estável e 
 
 Erros de contrato e autorização nunca produzem efeito financeiro; a suíte de integração verifica saldo, transações, ledger e outbox inalterados nesses casos.
 
-## Verificar e compilar
+## Testes
+
+### Verificar e compilar
 
 ```sh
 make check        # go vet, go test e go test -race
 make fmt          # gofmt
-make build        # bin/server
+make build        # bin/server, bin/migrate e bin/provision-sqs
 ```
 
-Os testes atuais verificam configuração, contrato de liveness, composição Fx, porta ocupada, liberação do listener, conclusão de requisições durante shutdown, gate do módulo de banco, invariantes de `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e eventos de domínio. Não são testes de integração financeira nem substituem os cenários obrigatórios com infraestrutura real.
-
-Os testes de integração (transações do `UnitOfWork`, casos de uso `CreateWallet` e `ProcessWager`, leituras com cursor, reconciliação e proteções de schema) exigem PostgreSQL real (migrations aplicadas pelo próprio harness) e usam a build tag `integration` (pulam sem a variável de conexão; nenhum mock substitui o banco):
-
-```sh
-docker compose -f compose.dev.yaml up -d postgres
-TEST_DATABASE_URL='postgres://jungle:jungle-local@127.0.0.1:55432/jungle?sslmode=disable' \
-  go test -race -tags=integration ./internal/adapters/postgres ./internal/application/... -count=1
-```
-
-A suíte HTTP autenticada (`internal/adapters/http`) adicionalmente exige Keycloak real com o realm importado; sem `TEST_OIDC_ISSUER` ela pula:
-
-```sh
-docker compose -f compose.dev.yaml up -d
-TEST_OIDC_ISSUER='http://localhost:58080/realms/jungle' \
-TEST_SQS_ENDPOINT=http://localhost:4566 \
-AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_SESSION_TOKEN= \
-TEST_DATABASE_URL='postgres://jungle:jungle-local@127.0.0.1:55432/jungle?sslmode=disable' \
-  go test -race -tags=integration ./internal/adapters/http/ -count=1 -v
-```
+Os testes unitários verificam configuração, contrato de liveness, composição Fx, porta ocupada, liberação do listener, conclusão de requisições durante shutdown, gate do módulo de banco, invariantes de `Money`, `Wallet`, `WagerTransaction`, `WalletLedgerEntry` e eventos de domínio. Não são testes de integração financeira nem substituem os cenários obrigatórios com infraestrutura real.
 
 Para exercitar parsing e aritmética monetária com entradas geradas automaticamente:
 
@@ -349,17 +382,88 @@ go test ./internal/domain/wagering -cover
 go test ./internal/domain/wagering -run '^$' -fuzz '^FuzzBetRefundRollback$' -fuzztime=10s -parallel=2
 ```
 
-`Money` usa centavos em `int64` e recebe valores externos como `{"amount":"25.90","currency":"BRL"}`. As regras, limites e erros estão em [ARCHITECTURE.md](ARCHITECTURE.md#money--primeiro-incremento-da-fase-1).
+### Integração real (PostgreSQL + Keycloak + SQS)
 
-`Wallet` mantém identidade, jogador, saldo, versão e timestamps em campos privados. Criação inicia na versão 1; reidratação preserva o estado persistido; crédito e débito validam moeda e limites antes de alterar o agregado. Rejeições e valores zero preservam saldo, versão e horário de atualização. A aplicação coordena escritas por `SELECT ... FOR UPDATE` e grava o ledger no mesmo commit; a demonstração com três processos independentes está nos scripts reproduzíveis do Compose de entrega.
+Os testes de integração usam a build tag `integration`, infraestrutura real
+(sem mocks; testes sem `TEST_DATABASE_URL`/`TEST_OIDC_ISSUER`/`TEST_SQS_ENDPOINT`
+são ignorados, não aprovados) e filas exclusivas por fixture:
 
-`WagerTransaction` implementa os estados e as regras de `BET`, `WIN`, `LOSS`, `REFUND`, `ROLLBACK` e abertura interna `OPENING`. O domínio avalia referências, impede reprocessamento de estados terminais e mantém o resultado original persistido para replay. A política de compensação está na [ADR 0001](docs/adr/0001-compensacao-direta.md). Idempotência durável e atomicidade SQL estão implementadas; o worker de referências retoma pendências persistidas.
+```sh
+docker compose -f compose.dev.yaml up -d
+make check
+go vet -tags=integration ./...
+TEST_DATABASE_URL='postgres://jungle:jungle-local@localhost:55432/jungle?sslmode=disable' \
+TEST_OIDC_ISSUER=http://localhost:58080/realms/jungle \
+TEST_SQS_ENDPOINT=http://localhost:4566 \
+AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_SESSION_TOKEN= \
+go test -race -tags=integration ./... -count=1
+```
 
-`WalletLedgerEntry` é um tipo-valor imutável com um lançamento por movimentação efetiva: direção, quantia positiva, saldo anterior e posterior consistentes (`balanceAfter = balanceBefore ± amount`) e timestamp em UTC. Não há setters; criação e reidratação coincidem. Unicidade `(wallet_id, transaction_id)` e proteção contra edição/exclusão são impostas pelo schema PostgreSQL.
+Verificam HTTP+SQS com IdP real, redelivery, rollback por erro SQL na inbox,
+commit confirmado com resposta perdida, rejeição terminal, conflitos,
+autenticação, DLQ por três tentativas, readiness e shutdown com rollback.
+Injeção de falhas na fronteira do commit **não equivale a matar/reiniciar
+processos**: os kills literais são exercitados por
+[`scripts/fault.sh`](scripts/fault.sh) e a demonstração de paralelismo entre
+instâncias está em [`scripts/smoke.sh`](scripts/smoke.sh).
+`scripts/quality-gates.sh` exige as três variáveis e executa os gates com
+`-race -count=1/2`.
 
-Os eventos tipados (`WagerTransactionProcessed`, `WagerTransactionRejected`, `WalletBalanceChanged`, `WagerTransactionPendingReference`) são envelopes imutáveis com `eventId`, `eventType`, `aggregateId` derivado dos dados, `correlationId`, `causationId` opcional, `occurredAt` em UTC, `version` por tipo e payload tipado; `MarshalJSON` fixa o contrato do payload da outbox com dinheiro em string decimal. A gravação na `outbox_events` é atômica com as operações financeiras; a publicação pós-commit na fila de eventos é detalhada no [ARCHITECTURE.md](ARCHITECTURE.md#outbox-publisher--fase-5-incremento-2).
+### Testes de carga com k6
 
-## Worker de referências pendentes
+A suíte de performance em `tests/load/` mede o ambiente de entrega com três
+réplicas reais e fecha cada cenário com verificação financeira **independente**
+(SQL somente leitura via `cmd/verifywallet`, publicado em `127.0.0.1:59532`).
+Pré-requisitos e execução em [`tests/load/README.md`](tests/load/README.md);
+resultados reais, tabelas p50/p95/p99 e análise de gargalos em
+[docs/PERFORMANCE_REPORT.md](docs/PERFORMANCE_REPORT.md):
+
+```sh
+cd tests/load
+k6 run scenarios/smoke.js          # saneamento: aborta se o ambiente não estiver saudável
+k6 run scenarios/ramp-up.js        # 10→25→50→100 VUs com carteiras exclusivas por VU
+k6 run scenarios/contention.js     # 50 BETs de 30.00 em burst → 33/17, saldo 10.00 auditável
+k6 run scenarios/idempotency.js    # 50 idênticas → 1 débito, 49 replays
+k6 run scenarios/multiwallet.js    # ciclo BET/WIN/LOSS/REFUND/ROLLBACK por carteira
+k6 run scenarios/soak.js           # 15 min com reconciliação periódica ao vivo
+```
+
+### Falhas literais (Testes E/F/H)
+
+Use um projeto Compose **descartável e isolado**, com `COMPOSE_PROJECT_NAME`
+explícito e as portas correspondentes em `GATEWAY_URL`, `KEYCLOAK_URL` e `SQS_URL`.
+Após subir o ambiente:
+
+```sh
+FAULT_DISPOSABLE=1 bash scripts/fault.sh
+```
+
+O script compila uma imagem separada com a tag Go `faulttest`; a imagem normal
+recusa a configuração dos failpoints. E bloqueia após commit da inbox e antes
+do delete, exige o registro SQL e mata os três processos; após reinício exige
+`inboxReplay=true`, mesmo messageId e receive count maior que um. F bloqueia
+após SendMessage aceito, verifica lease ainda válida e ACK ausente, mata os
+processos e exige tentativa 2 após expiração natural, mesmo eventId e SHA-256
+do payload nas duas chamadas aceitas. A deduplicação FIFO pode suprimir a
+segunda entrega. H reinicia com referência pendente e conclui por HTTP→SQS.
+Saldo, ledger e reconciliação são conferidos. Janela não alcançada reprova o
+script. A saída registra IDs, tentativas e evidências; o EXIT restaura a imagem
+normal. O broker local está publicado somente em loopback (porta padrão 49570).
+
+## Arquitetura e decisões
+
+### ProcessWager: garantias verificadas
+
+- Duas BETs de `80.00` sobre `100.00`: uma processada, uma rejeitada, saldo `20.00` e um débito.
+- 50 chamadas concorrentes da mesma BET: uma operação, um débito e dois eventos; 49 replays.
+- Replay retorna saldo/versão originais, mesmo após novas movimentações. Mesma chave com conteúdo diferente ou mesmo ID externo com outra chave gera conflito.
+- LOSS e rejeições não geram ledger; REFUND/ROLLBACK concorrentes não compensam a mesma referência duas vezes.
+- Erro SQL na segunda gravação da outbox desfaz carteira, transação, ledger e primeiro evento.
+- Uma carteira progride enquanto outra está bloqueada; reconciliação confirma os saldos após os cenários concorrentes e de reversão.
+
+`Money` usa centavos em `int64` e recebe valores externos como `{"amount":"25.90","currency":"BRL"}`; regras, limites e erros estão em [ARCHITECTURE.md](ARCHITECTURE.md#money--primeiro-incremento-da-fase-1). `Wallet` mantém identidade, jogador, saldo, versão e timestamps em campos privados; a aplicação coordena escritas por `SELECT ... FOR UPDATE` e grava o ledger no mesmo commit. `WagerTransaction` implementa os estados e as regras dos cinco tipos externos mais a abertura interna `OPENING`; a política de compensação está na [ADR 0001](docs/adr/0001-compensacao-direta.md). `WalletLedgerEntry` é um tipo-valor imutável: direção, quantia positiva, saldo anterior/posterior consistentes e timestamp UTC; unicidade `(wallet_id, transaction_id)` e proteção contra edição/exclusão vêm do schema PostgreSQL. Os eventos tipados têm `eventId`, `correlationId` e payload com dinheiro em string; a gravação na `outbox_events` é atômica com as operações financeiras.
+
+### Worker de referências pendentes
 
 Com `DATABASE_URL` definida, todo processo executa um worker que retoma operações `PENDING_REFERENCE`:
 
@@ -371,200 +475,7 @@ Com `DATABASE_URL` definida, todo processo executa um worker que retoma operaç�
 
 `WagerTransaction` continua expondo a consulta de pendências por `GET /wagering/transactions/:id`.
 
-## ProcessWager: garantias verificadas
-
-- Duas BETs de `80.00` sobre `100.00`: uma processada, uma rejeitada, saldo `20.00` e um débito.
-- 50 chamadas concorrentes da mesma BET: uma operação, um débito e dois eventos; 49 replays.
-- Replay retorna saldo/versão originais, mesmo após novas movimentações. Mesma chave com conteúdo diferente ou mesmo ID externo com outra chave gera conflito.
-- LOSS e rejeições não geram ledger; REFUND/ROLLBACK concorrentes não compensam a mesma referência duas vezes.
-- Erro SQL na segunda gravação da outbox desfaz carteira, transação, ledger e primeiro evento.
-- Uma carteira progride enquanto outra está bloqueada; reconciliação confirma os saldos após os cenários concorrentes e de reversão.
-
-Os testes usam infraestrutura real: a suíte HTTP valida tokens válidos, ausentes, malformados, com assinatura alterada, audience errada, sem role, expirados (cliente com vida curta no realm), isolamento entre provedores (inclusive em replays e conflitos) e a ausência de efeitos financeiros em acessos não autorizados. As três instâncias independentes (réplicas atrás do gateway), os reinícios literais e o cruzamento HTTP↔SQS são exercitados pelos scripts reproduzíveis [`scripts/smoke.sh`](scripts/smoke.sh) e [`scripts/fault.sh`](scripts/fault.sh) contra o Compose de entrega. HTTP/SQS usam broker e IdP reais. Testes sem `TEST_DATABASE_URL`/`TEST_OIDC_ISSUER`/`TEST_SQS_ENDPOINT` são ignorados, não aprovados. As decisões de hash, retries e transação estão em [ARCHITECTURE.md](ARCHITECTURE.md#processwager--processamento-transacional-compartilhado).
-
-## Docker
-
-```sh
-make docker-build
-docker run --rm --name jungle-backend-local -p 127.0.0.1:8080:8080 --env-file .env.example jungle-backend-go:local
-```
-
-Em outro terminal, consulte o health e encerre:
-
-```sh
-curl --fail http://localhost:8080/health/live
-docker stop --time 15 jungle-backend-local
-```
-
-A imagem usa build multi-stage e executa com usuário sem privilégios. O Compose de entrega inclui PostgreSQL, Keycloak, LocalStack e três APIs.
-
-## Organização e próximos passos
-
-```text
-cmd/server/                        entrada do processo
-internal/application/             portas e casos de uso (command e query)
-internal/bootstrap/               configuração, composição Fx e lifecycle
-internal/adapters/http/           servidor, contrato HTTP e autorização
-internal/adapters/sqs/            consumidor FIFO, assinatura e provisionamento
-internal/adapters/oidc/           verificação de access tokens do IdP
-internal/adapters/postgres/       pool pgx, UnitOfWork, repositórios e reconciliador
-internal/domain/money/            valor monetário exato e testes
-internal/domain/wallet/           agregado de carteira e testes
-internal/domain/wagering/         transações, estados e políticas
-internal/domain/ledger/           lançamento imutável do ledger e testes
-internal/domain/events/          eventos tipados de domínio e testes
-internal/testsupport/             harness de integração (build tag integration)
-migrations/                       schema versionado up/down (golang-migrate)
-deployments/                      realm Keycloak de desenvolvimento e gateway
-compose.dev.yaml                  dependências locais (PostgreSQL + Keycloak + LocalStack)
-tests/load/                       suíte k6 com verificação financeira independente
-docs/adr/                         decisões de arquitetura (ADR 0001/0002)
-docs/CONFORMIDADE_DESAFIO.md      matriz requisito → implementação → evidência
-docs/QA_RELATORIO_FINAL.md        auditoria de QA e ciclos (veredito GO)
-docs/PERFORMANCE_REPORT.md        resultados reais dos testes de carga k6
-docs/ENGINEERING_EXCELLENCE_REPORT.md  relatório executivo com A/B
-docs/ARCHITECTURE_DIAGRAMS.md     diagramas Mermaid dos fluxos reais
-docs/RUNBOOK.md                   operação e resposta a falhas
-docs/SECURITY_REVIEW.md           revisão de segurança e ameaças
-docs/reference/                   snapshot do enunciado e procedência
-references/                       clone local do desafio (ignorado pelo Git)
-```
-
-As decisões e limites estão em [ARCHITECTURE.md](ARCHITECTURE.md). O publisher da outbox publica pós-commit com claim/lease, backoff e republicação com mesmo `eventId`, verificado com LocalStack e PostgreSQL reais; a demonstração com três processos está nos scripts de entrega. O consumidor SQS já chama o mesmo `ProcessWager` da API HTTP.
-
-O módulo e o remoto `origin` usam o repositório [hendelsantos/jungle-backend-challenge-go](https://github.com/hendelsantos/jungle-backend-challenge-go).
-
-Cada incremento segue o fluxo: implementação, verificações pertinentes, atualização da documentação, commit e push para `origin/main`. Essa rotina está registrada em [AGENTS.md](AGENTS.md).
-
-## Enunciado original
-
-O clone solicitado fica em `references/backend-challenge-go`, com histórico e remoto próprios. Uma [cópia de referência](docs/reference/README_DESAFIO.md) é versionada junto à solução; sua [procedência](docs/reference/SOURCE.md) registra o commit consultado.
-
-Para recriar o clone local em outro checkout:
-
-```sh
-git clone https://github.com/junglegaming/backend-challenge-go.git references/backend-challenge-go
-git -C references/backend-challenge-go checkout bdd9e70b65db9b374ee070bd3a4768661a888997
-```
-
-### Revisão do backoff de referências (12/10/2026)
-
-O backoff limita o expoente antes do deslocamento de bits: 1s, 2s, …, 256s e teto de 5min a partir da décima tentativa. Isso evita overflow de `time.Duration` em pendências duradouras; TTL e regras de reagendamento permanecem iguais. Teste cobre limites, 1.000 tentativas e o maior `int` da plataforma.
-
-## Consumidor SQS — primeiro incremento da Fase 5
-
-Depois de subir as dependências e aplicar as migrations conforme acima, habilite
-SQS no mesmo processo da API (mantenha `DATABASE_URL`, `OIDC_ISSUER` e
-`OIDC_AUDIENCE` dos exemplos anteriores):
-
-```sh
-export AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_SESSION_TOKEN=
-export SQS_ENDPOINT_URL=http://localhost:4566
-export SQS_PROVIDER_KEYS='{"provider-a":"local-provider-a-signing-key-32-bytes-minimum","provider-b":"local-provider-b-signing-key-32-bytes-minimum"}'
-make run
-```
-
-O startup provisiona automaticamente `wager-transactions.fifo`,
-`wager-transactions-dlq.fifo` e `wager-events.fifo`, corrigindo redrive e
-visibilidade em filas existentes. Não exige conta AWS nem token LocalStack.
-O Compose de desenvolvimento (`compose.dev.yaml`) sobe as dependências de
-teste; o Compose de entrega (`docker-compose.yml`) já inclui a aplicação em
-três réplicas, gateway nginx, migrations automáticas pelo job `migrate`
-(Keycloak e PostgreSQL e LocalStack reais). Se a porta estiver ocupada, use
-`JUNGLE_SQS_PORT=14566` no Compose e ajuste
-`SQS_ENDPOINT_URL`/`TEST_SQS_ENDPOINT` para `http://localhost:14566`.
-
-Salve o envelope oficial em `/tmp/wager.json`, usando carteira e jogador criados
-pelo endpoint interno. Todos os valores monetários são strings:
-
-```json
-{
-  "messageId": "msg-exemplo-001",
-  "type": "WagerTransactionRequested",
-  "occurredAt": "2026-10-12T12:00:00Z",
-  "data": {
-    "providerId": "provider-a",
-    "externalTransactionId": "bet-exemplo-001",
-    "idempotencyKey": "provider-a:bet-exemplo-001",
-    "playerId": "SUBSTITUA-PELO-UUID-DO-JOGADOR",
-    "walletId": "SUBSTITUA-PELO-UUID-DA-CARTEIRA",
-    "roundId": "round-1",
-    "gameId": "fortune-chimp",
-    "kind": "BET",
-    "money": {"amount": "25.00", "currency": "BRL"}
-  }
-}
-```
-
-Em outro terminal, o produtor de desenvolvimento assina e envia o corpo sem
-alterá-lo (a variável abaixo contém apenas a chave daquele provedor):
-
-```sh
-AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_SESSION_TOKEN= \
-SQS_ENDPOINT_URL=http://localhost:4566 \
-SQS_PROVIDER_KEY=local-provider-a-signing-key-32-bytes-minimum \
-go run ./cmd/send-wager -provider provider-a -file /tmp/wager.json
-
-# Inspecionar filas/DLQ no broker local:
-docker compose -f compose.dev.yaml exec localstack awslocal sqs list-queues
-# Copie a URL da DLQ retornada:
-docker compose -f compose.dev.yaml exec localstack awslocal sqs receive-message \
-  --queue-url URL-DA-DLQ --message-attribute-names All
-```
-
-A assinatura HMAC-SHA256 vai nos atributos SQS `providerId` e `signature`; o
-provedor autenticado precisa corresponder ao corpo. Chaves diferentes isolam os
-provedores. O LocalStack fica em porta de loopback; sua configuração local não
-comprova autorização IAM. Não exponha esse broker de desenvolvimento como um
-serviço de produção. Os valores publicados aqui são exclusivamente de teste.
-
-`MessageGroupId` é o UUID da carteira. O produtor usa SHA-256 do corpo como
-`MessageDeduplicationId`; a deduplicação por conteúdo do broker fica desativada.
-A deduplicação financeira é permanente no PostgreSQL, independente da janela
-FIFO: a mesma aposta por HTTP e SQS produz um único efeito. Use `messageId`
-globalmente único (preferencialmente UUID) e reenvie os mesmos bytes para replay
-da inbox. Alterar espaços também altera seu hash; o hash financeiro separado
-continua canônico e independente dos metadados de transporte.
-
-Política operacional:
-
-- Long polling de 10s; um item por chamada; visibilidade de 30s; processamento e
-  confirmação limitados a 10s. Uma falha retorna para retry em 1s, 2s e 4s;
-  após três recebimentos, o redrive do broker encaminha à DLQ.
-- Envelope inválido, assinatura ausente/divergente, operação inválida ou conflito
-  de identidade são permanentes: copiar à DLQ e só então remover da entrada.
-  Falha nessa cópia conserva a mensagem original. Carteira ainda inexistente e
-  falhas de infraestrutura seguem retry limitado. Rejeição de negócio confirmada
-  (`REJECTED`) é terminal, persistida na inbox e removida sem ir à DLQ.
-- Carteira, operação, ledger, outbox e conclusão da inbox compartilham um commit.
-  `DeleteMessage` só ocorre depois dele. Resultado de commit desconhecido conserva
-  a mensagem; reentrega consulta a identidade persistida sem novo débito.
-- `SIGTERM` cancela polling e trabalho ativo; transações não confirmadas fazem
-  rollback e receipts conhecidos têm visibilidade liberada. Um receive cancelado
-  cujo receipt não chegou pode aguardar os 30s de visibilidade para reaparecer.
-
-Testes reproduzíveis (PostgreSQL e Keycloak também precisam estar ativos):
-
-```sh
-make check
-go vet -tags=integration ./...
-TEST_DATABASE_URL='postgres://jungle:jungle-local@localhost:55432/jungle?sslmode=disable' \
-TEST_OIDC_ISSUER=http://localhost:58080/realms/jungle \
-TEST_SQS_ENDPOINT=http://localhost:4566 \
-AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_SESSION_TOKEN= \
-go test -race -tags=integration ./... -count=1
-```
-
-As suítes usam filas exclusivas e só excluem filas que criam; não fazem purge das
-filas de desenvolvimento. Verificam HTTP+SQS com IdP real, redelivery, rollback
-por erro SQL na inbox, commit confirmado com resposta perdida, rejeição terminal,
-conflitos, autenticação, DLQ por três tentativas, readiness e shutdown com rollback.
-Injeção de falhas na fronteira do commit **não equivale a matar/reiniciar processos**:
-os kills literais de processos são exercitados por [`scripts/fault.sh`](scripts/fault.sh)
-(Testes E/F/H com `docker compose kill -s KILL api` nas três réplicas) e a
-demonstração de paralelismo entre instâncias está em [`scripts/smoke.sh`](scripts/smoke.sh).
-
-## Outbox publisher — segundo incremento da Fase 5
+### Outbox publisher
 
 Eventos comprometidos no mesmo commit financeiro são publicados na
 `wager-events.fifo` por um worker em loop de 1s que reivindica um evento por vez:
@@ -586,49 +497,101 @@ Eventos comprometidos no mesmo commit financeiro são publicados na
   publicações, falhas, retries, leases perdidas); gauges consultam o PostgreSQL
   e falha de consulta vira 503, nunca atraso falso.
 
-Evidência de integração (LocalStack e PostgreSQL reais, filas e schema isolados
-por teste): entrega com corpo/`MessageDeduplicationId`/`MessageGroupId` corretos;
-crash simulado entre envio e confirmação recuperado com o mesmo `eventId`
-(a janela de deduplicação FIFO suprime a repetição); quatro publishers
-concorrentes entregam dois eventos uma única vez cada; lease abandonado
-recuperado sem interferência do token antigo. Os kills literais de processo
-e a demonstração com três instâncias estão em `scripts/fault.sh` e
-`scripts/smoke.sh` (Fase 6, incremento 4).
+Detalhes e evidências de integração: [ARCHITECTURE.md](ARCHITECTURE.md#outbox-publisher--fase-5-incremento-2).
 
-## Engineering decisions & trade-offs
+### Engineering decisions & trade-offs
 
-- **PostgreSQL como única fonte da verdade.** Memória, SQS FIFO e correlações em HTTP servem o plano de controle; a integridade financeira (identidade, saldo, ledger, ilog/outbox) é garantida por schema (índices únicos, CHECKs, triggers) — isso sobrevive a processos, replicação e reinício.
+- **PostgreSQL como única fonte da verdade.** Memória, SQS FIFO e correlações em HTTP servem o plano de controle; a integridade financeira (identidade, saldo, ledger, inbox/outbox) é garantida por schema (índices únicos, CHECKs, triggers) — isso sobrevive a processos, replicação e reinício.
 - **Locking pessimista por linha.** As carteiras são objetos concorrentes por natureza; `SELECT ... FOR UPDATE` no contexto da mesma transação do débito evita lost updates com ordem simples e previsível — carteiras diferentes travam linhas diferentes e progridem em paralelo.
-- **Idempotência persistente (não em memória).** Dois índices únicos por provedor: `idem-potency_key` e `external_transaction_id`. O vencedor do INSERT processa; os perdedores leem o resultado persistido, inclusive o saldo no momento do resultado (`result_balance_cents`, `result_wallet_version`), inclusive após reinício.
+- **Idempotência persistente (não em memória).** Dois índices únicos por provedor: `idempotency_key` e `external_transaction_id`. O vencedor do INSERT processa; os perdedores leem o resultado persistido, inclusive o saldo no momento do resultado (`result_balance_cents`, `result_wallet_version`), inclusive após reinício.
 - **Inbox e outbox no mesmo commit.** Duplicação entre HTTP e SQS é resolvida pela inbox `(consumer, messageId, hash)` commitada junto; a outbox garante "nunca publicar antes do commit" e produz eventos com `eventId` estável.
-- **Entrega at-least-once (idadeamento honesto).** SQS/I O dedup tem janela limitada; o correto é REPUBLICAR o mesmo `eventId` e delegar deduplicação ao consumidor fora da janela FIFO (at-least inclusive). Nada aqui promete "exactly once".
-- **Dimensão de pool (A/B real, 13/10).** Perna limpa 100 VUs: `max(4, ncpu)=12` conns: 344–355 rps, p95 393–404 ms, p99 586–614 ms, espera de aquisição ~44 s média; MaxConns=24: 341 rps (par), p95 389 ms, p99 542–561 ms, espera ~9 s. Mais conns (36/48) **piorou** (saturação do Postgres; 3×36 > 100 con max_connections). Adotado **PG_POOL_MAX_CONNS=24** no Compose de entrega com override por env.
-- **Outbox publishers múltiplos (drain medido).** Backlog isolado de ~27k eventos: 1 worker/réplica drenou em 147,7 ev/s; 3 workers/réplica em **408,7–421,5 ev/s** (2,8×), sem violar leases (`FOR UPDATE SKIP LOCKED`, ack por token, sem transação aberta no I/O). Adotado **OUTBOX_WORKERS=3** no Compose; os tests de leases/falha publicam/ack do editor já cobrem os dois modos.
+- **Entrega at-least-once (modelo honesto).** SQS dedup tem janela limitada; o correto é republicar o mesmo `eventId` e delegar deduplicação ao consumidor fora da janela FIFO. Nada aqui promete "exactly once".
+- **Dimensão de pool (A/B real, 13/10).** Perna limpa 100 VUs: `max(4, ncpu)=12` conns: 344–355 rps, p95 393–404 ms, p99 586–614 ms, espera de aquisição ~44 s média; MaxConns=24: 341 rps (par), p95 389 ms, p99 542–561 ms, espera ~9 s. Mais conns (36/48) **piorou** (saturação do Postgres). Adotado **PG_POOL_MAX_CONNS=24** no Compose de entrega com override por env.
+- **Outbox publishers múltiplos (drain medido).** Backlog isolado de ~27k eventos: 1 worker/réplica drenou em 147,7 ev/s; 3 workers/réplica em **408,7–421,5 ev/s** (2,8×), sem violar leases. Adotado **OUTBOX_WORKERS=3** no Compose.
 - **Gargalos observados (com evidência):** além do pool, o publisher de outbox não acompanha produção extrema (100 VUs geram ~700 ev/s de pico; com 1 worker por réplica o dreno isolado mediu 147,7 ev/s). Com 3 workers por réplica, o dreno medido (408–421 ev/s) passa a acompanhar a produção moderada. Alternativas rejeitadas: cache de saldo em memória (corretude não aceita), verificação check-then-act fora do banco (perde para os índices únicos) e OTel distribuído (diferencial opcional; fora do escopo do prazo).
-- **Próximos passos em produção (fora do escopo do desafio):** alertas contínuos em `jungle_outbox_*` e divergências, dashboards com esses regimes, pool dimensionado por load-test em hardware dedicado, segredos em vault com rotação, revisão de incidentes e runbook ensaiado.
+- **Próximos passos em produção (fora do escopo do desafio):** alertas contínuos em `jungle_outbox_*` e divergências, dashboards, pool dimensionado por load-test em hardware dedicado, segredos em vault com rotação, revisão de incidentes e runbook ensaiado.
 
+## Docker
 
-## Checkpoint das correções locais (13/10/2026)
+```sh
+make docker-build
+docker run --rm --name jungle-backend-local -p 127.0.0.1:8080:8080 --env-file .env.example jungle-backend-go:local
+```
 
-Os cenários k6 agora possuem thresholds para reprovar checks falhos e usam
-contadores agregados; as expectativas monetárias usam BigInt. O soak usa
-`constant-vus` com duração configurada. Isso não atualiza os resultados das
-campanhas anteriores. As pausas `JUNGLE_TEST_POST_COMMIT_PAUSE` e
-`JUNGLE_TEST_PUBLISH_ACK_PAUSE` destinam-se aos ensaios de interrupção e ficam
-vazias na operação normal. A conformidade permanece parcial; ver os limites
-registrados em [CONFORMIDADE_DESAFIO.md](docs/CONFORMIDADE_DESAFIO.md).
+Em outro terminal, consulte o health e encerre:
 
-### Revisão final — 14/10/2026
+```sh
+curl --fail http://localhost:8080/health/live
+docker stop --time 15 jungle-backend-local
+```
 
-A matriz atual está em [AUDITORIA_FINAL_ENTREGA.md](docs/AUDITORIA_FINAL_ENTREGA.md).
-As políticas IAM são templates: o servidor local ainda usa uma única identidade
-para provisionar, consumir e publicar. A separação de papéis e as negações do
-broker não foram comprovadas operacionalmente; HMAC protege a autenticidade do
-pedido financeiro, não impede apagar mensagens no broker.
+A imagem usa build multi-stage e executa com usuário sem privilégios. O Compose de entrega inclui PostgreSQL, Keycloak, LocalStack e três APIs.
 
-Regressão automatizada sem skips: `scripts/quality-gates.sh` exige as três
-variáveis `TEST_DATABASE_URL`, `TEST_OIDC_ISSUER` e `TEST_SQS_ENDPOINT` e executa
-os gates com `-race -count=1/2`. A [regressão de carga](tests/load/README.md)
-verifica todas as carteiras por SQL em snapshot. Os probes
-`scripts/broker-probe.py` e `scripts/broker-recovery.py` registram limites reais
-do broker; exit 2 no segundo significa durabilidade reprovada, não aprovação.
+## Organização do repositório
+
+```text
+cmd/server/                         entrada do processo
+cmd/migrate/                        migrations golang-migrate (job de entrega)
+cmd/provision-sqs/                  provisionamento administrativo das filas
+cmd/send-wager/                     produtor de desenvolvimento (envelope assinado)
+cmd/verifywallet/                   verificador financeiro SQL somente leitura
+internal/application/               portas e casos de uso (command e query)
+internal/bootstrap/                 configuração, composição Fx e lifecycle
+internal/adapters/http/             servidor, contrato HTTP e autorização
+internal/adapters/sqs/              consumidor FIFO, assinatura e provisionamento
+internal/adapters/oidc/             verificação de access tokens do IdP
+internal/adapters/postgres/         pool pgx, UnitOfWork, repositórios e reconciliador
+internal/domain/money/              valor monetário exato e testes
+internal/domain/wallet/             agregado de carteira e testes
+internal/domain/wagering/           transações, estados e políticas
+internal/domain/ledger/             lançamento imutável do ledger e testes
+internal/domain/events/             eventos tipados de domínio e testes
+internal/testsupport/               harness de integração (build tag integration)
+migrations/                         schema versionado up/down (golang-migrate)
+deployments/                        realm Keycloak, gateway, políticas IAM e configs de POC
+tests/load/                         suíte k6 com verificação financeira independente
+tests/broker/                       probes de aceitação de broker (MiniStack/ElasticMQ)
+tests/homolog/                      probes de homologação AWS SQS (tag awshomolog)
+docker-compose.yml                  entrega: PG + Keycloak + LocalStack + 3 APIs + gateway
+compose.dev.yaml                    dependências locais de desenvolvimento
+compose.homolog.yaml                homologação com AWS SQS gerenciado (opt-in)
+compose.ministack.yaml              POC MiniStack isolada (reprovada)
+compose.elasticmq.yaml              POC ElasticMQ isolada (reprovada p/ A01)
+```
+
+## Documentação
+
+| Documento | Conteúdo |
+| --- | --- |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | decisões, garantias e limites arquiteturais |
+| [docs/CONFORMIDADE_DESAFIO.md](docs/CONFORMIDADE_DESAFIO.md) | matriz requisito → implementação → evidência |
+| [docs/AUDITORIA_FINAL_ENTREGA.md](docs/AUDITORIA_FINAL_ENTREGA.md) | auditoria final com matriz A01–A13 |
+| [docs/AUDITORIA_A01_A02_LOCAL_FINAL.md](docs/AUDITORIA_A01_A02_LOCAL_FINAL.md) | veredito local de A01/A02 (brokers avaliados) |
+| [docs/AUDITORIA_MINISTACK_FINAL.md](docs/AUDITORIA_MINISTACK_FINAL.md) | POC MiniStack (reprovada) |
+| [docs/HOMOLOGACAO_AWS.md](docs/HOMOLOGACAO_AWS.md) | procedimento de homologação AWS SQS |
+| [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md) | revisão de segurança e ameaças |
+| [docs/RUNBOOK.md](docs/RUNBOOK.md) | operação e resposta a falhas |
+| [docs/PERFORMANCE_REPORT.md](docs/PERFORMANCE_REPORT.md) | resultados reais dos testes de carga k6 |
+| [docs/ARCHITECTURE_DIAGRAMS.md](docs/ARCHITECTURE_DIAGRAMS.md) | diagramas Mermaid dos fluxos reais |
+| [docs/GUIA_ENTREVISTA_JUNGLE.md](docs/GUIA_ENTREVISTA_JUNGLE.md) | roteiro de demonstração e entrevista |
+| [docs/adr/](docs/adr/) | decisões de arquitetura (ADR 0001/0002) |
+| [docs/reference/](docs/reference/) | snapshot do enunciado e procedência |
+
+O histórico completo de incrementos, evidências intermediárias e perguntas de
+estudo está em [PLANO_SISTEMA_JUNGLE_GO.md](PLANO_SISTEMA_JUNGLE_GO.md) e em
+[docs/audit/](docs/audit/). O módulo e o remoto `origin` usam o repositório
+[hendelsantos/jungle-backend-challenge-go](https://github.com/hendelsantos/jungle-backend-challenge-go).
+
+## Enunciado original
+
+O clone solicitado fica em `references/backend-challenge-go` (ignorado pelo Git),
+com histórico e remoto próprios. Uma [cópia de referência](docs/reference/README_DESAFIO.md)
+é versionada junto à solução; sua [procedência](docs/reference/SOURCE.md) registra
+o commit consultado.
+
+Para recriar o clone local em outro checkout:
+
+```sh
+git clone https://github.com/junglegaming/backend-challenge-go.git references/backend-challenge-go
+git -C references/backend-challenge-go checkout bdd9e70b65db9b374ee070bd3a4768661a888997
+```
