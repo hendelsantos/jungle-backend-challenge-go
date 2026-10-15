@@ -47,7 +47,9 @@ func run(path, provider string) error {
 		return fmt.Errorf("envelope provider differs from signing identity")
 	}
 	endpoint, region := os.Getenv("SQS_ENDPOINT_URL"), os.Getenv("SQS_REGION")
-	if endpoint == "" {
+	// Homologation: with SQS_ENABLED=true and no endpoint the SDK targets the
+	// managed AWS service of the region; never fall back to localhost there.
+	if endpoint == "" && os.Getenv("SQS_ENABLED") != "true" {
 		endpoint = "http://localhost:4566"
 	}
 	if region == "" {

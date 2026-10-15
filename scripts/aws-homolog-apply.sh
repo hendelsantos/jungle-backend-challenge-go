@@ -108,6 +108,11 @@ region = ${REGION}
 role_arn = arn:aws:iam::${ACCOUNT}:role/${BASE}-jungle-event-publisher
 source_profile = <your-base-profile>
 region = ${REGION}
+
+[profile ${BASE}-jungle-wager-producer]
+role_arn = arn:aws:iam::${ACCOUNT}:role/${BASE}-jungle-wager-producer
+source_profile = <your-base-profile>
+region = ${REGION}
 EOF
 echo
 echo "Next: docker compose -f compose.homolog.yaml up --build -d"
