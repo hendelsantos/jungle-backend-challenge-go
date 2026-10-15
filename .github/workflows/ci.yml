@@ -48,6 +48,12 @@ jobs:
         run: |
           go vet -tags=awshomolog ./tests/homolog
           go test -race -tags=awshomolog ./tests/homolog -run '^$'
+      - name: compile and vet ElasticMQ acceptance probes
+        # Compilation is NOT acceptance: the ElasticMQ probe records a real
+        # local rejection (no broker auth) and never runs in CI.
+        run: |
+          go vet -tags=elasticmqpoc ./tests/broker
+          go test -race -tags=elasticmqpoc ./tests/broker -run '^$'
       - name: unit tests with race detector
         run: go test -race ./... -count=2
       - name: build all commands

@@ -194,6 +194,10 @@ O substituto local avaliado (MiniStack 1.5.27, POC isolada em
 e chaves builtin forjadas, e SIGKILL perde todas as mensagens aceitas desde o
 último shutdown graceful. Migração interrompida; LocalStack permanece.
 Parecer e reprodução: [docs/AUDITORIA_MINISTACK_FINAL.md](docs/AUDITORIA_MINISTACK_FINAL.md).
+O ElasticMQ 1.7.1 também foi provado: tem durabilidade real (H2 por eventos,
+sobrevive a SIGKILL), mas **não autentica** (anônimo/forjado aceitos) e desvia
+do SQS em compatibilidade — A01/A02 permanecem sem solução local gratuita
+([docs/AUDITORIA_A01_A02_LOCAL_FINAL.md](docs/AUDITORIA_A01_A02_LOCAL_FINAL.md)).
 
 Para encerrar A01/A02 com evidência real existe a **homologação em AWS SQS
 gerenciado**: ambiente isolado em `compose.homolog.yaml` (PostgreSQL e Keycloak

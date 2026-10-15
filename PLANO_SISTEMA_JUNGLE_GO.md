@@ -1458,3 +1458,38 @@ fallback seguro. Perguntas: por que assumir roles via STS é preferível a acces
 keys de longa duração em homologação? Por que o gate `SQS_ENABLED` precisa de
 três estados (auto/true/false) em vez de um booleano? Por que a política de
 recurso da fila exige que a limpeza assuma a role de administração?
+
+### Encerramento local de A01/A02 — esgotamento das alternativas (14/10/2026)
+
+Incremento em HEAD `781b239`. Verificação de versões: LocalStack Community
+4.14.0 e MiniStack 1.5.27 são as mais recentes — changelogs sem correção de
+enforcement IAM ou persistência SQS; repetir tentativas sem evidência nova foi
+descartado. Nova alternativa provada em POC isolada (`compose.elasticmq.yaml`,
+tag `elasticmqpoc`): **ElasticMQ 1.7.1**. Resultados observados:
+
+- **A02 (durabilidade): APROVADO** — `messages-storage` em H2 por eventos;
+  3/3 mensagens recuperadas íntegras (id/corpo/grupo/dedup/receive count)
+  tanto em restart graceful quanto em **SIGKILL** (exit 137 confirmado).
+- **A01 (autorização): REPROVADO** — anônimo, chave desconhecida e segredo
+  errado recebem HTTP 200; não há motor de políticas.
+- **Compatibilidade:** `SetQueueAttributes(ContentBasedDeduplication)` é
+  rejeitado (`InvalidAttributeName`) — no AWS real é válido; o reconcile do
+  provisionador falharia sem alteração, e nenhum contrato foi enfraquecido.
+  Redrive à DLQ não preservou MessageId/MessageDeduplicationId de forma
+  consistente; ordem observada na recuperação sugere desvio de bloqueio FIFO.
+
+Decisão: **nenhuma alternativa local gratuita fecha A01 e A02**; a entrega
+permanece em LocalStack e as pendências seguem documentadas como não
+resolvidas localmente. Relatório completo com matrizes e reprodução:
+[docs/AUDITORIA_A01_A02_LOCAL_FINAL.md](docs/AUDITORIA_A01_A02_LOCAL_FINAL.md).
+CI passa a compilar os probes `elasticmqpoc` (nunca executa). Sem push neste
+incremento por instrução explícita da missão.
+
+Conceitos Go: build tags distintas por broker mantêm probes concorrentes no
+mesmo pacote sem colisão; `docker wait` com código 137 é a pré-condição
+honesta de SIGKILL antes do restart; um helper de provisionamento local cru
+(não o adaptador) isola a medida do broker do contrato do projeto. Perguntas:
+por que a durabilidade por log de eventos (H2) sobrevive a SIGKILL e o
+snapshot-no-shutdown não? Por que um probe que falha é evidência melhor que um
+teste ajustado para passar? O que separa "recuperação da aplicação" de
+"durabilidade do broker" nos seis cenários?

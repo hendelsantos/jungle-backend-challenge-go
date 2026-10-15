@@ -1,0 +1,15 @@
+# Isolated ElasticMQ feasibility probe only. Never overlays the delivery Compose.
+# Use a NEW project for each run; keep its containers and volume as evidence.
+name: ${ELASTICMQ_POC_PROJECT:?Set a unique ELASTICMQ_POC_PROJECT}
+services:
+  elasticmq:
+    image: softwaremill/elasticmq-native:1.7.1@sha256:e2a117210124256cd61ab9ae1a7856527d959aa2e92842f2f81826e30d17460e
+    ports:
+      - "127.0.0.1:${ELASTICMQ_POC_PORT:-19324}:9324"
+    volumes:
+      - ./deployments/elasticmq/poc.conf:/opt/elasticmq.conf:ro
+      - elasticmq-data:/data
+    command: ["-Dconfig.file=/opt/elasticmq.conf"]
+    stop_grace_period: 30s
+volumes:
+  elasticmq-data:

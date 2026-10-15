@@ -132,6 +132,18 @@ não entra no Compose de entrega. Se usado para desenvolvimento, manter
 restrito ao loopback. A CI apenas compila os probes; nunca os executa como
 aprovação.
 
+## Avaliação ElasticMQ — 14/10/2026
+
+ElasticMQ 1.7.1 (`messages-storage` em H2, POC isolada, tag `elasticmqpoc`)
+**provou durabilidade real sob SIGKILL** (3/3 mensagens íntegras) — o único
+broker local gratuito com essa evidência. Porém **não autentica nem autoriza**
+(anônimo, chave desconhecida e segredo errado recebem HTTP 200), rejeita
+`ContentBasedDeduplication` em `SetQueueAttributes` (quebra o reconcile do
+provisionador, válido no AWS real) e o redrive à DLQ não preservou a identidade
+da mensagem de forma consistente. **Rejeitado** para A01/A02 na entrega:
+durabilidade sem autorização não atende o §19 do enunciado. Detalhes em
+[AUDITORIA_A01_A02_LOCAL_FINAL.md](AUDITORIA_A01_A02_LOCAL_FINAL.md).
+
 ## Homologação AWS SQS — 14/10/2026 (preparada, não executada)
 
 O caminho de encerramento de A01/A02 é a homologação contra o **SQS gerenciado
