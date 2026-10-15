@@ -25,7 +25,7 @@ func New() *fx.App {
 	}
 	if os.Getenv("DATABASE_URL") != "" {
 		options = append(options, databaseModule(), applicationModule(), workersModule())
-		if os.Getenv("SQS_ENDPOINT_URL") != "" {
+		if sqsRequestedFromEnv() {
 			options = append(options, messagingModule())
 		}
 	}

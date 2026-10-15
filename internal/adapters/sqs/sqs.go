@@ -18,7 +18,9 @@ import (
 )
 
 // Config covers the broker endpoint and the target region. Credentials are
-// resolved by the SDK's default chain, independently of the endpoint.
+// resolved by the SDK's default chain, independently of the endpoint. An
+// empty EndpointURL means the managed AWS service for the configured region
+// (homologation/production); a URL targets an explicit broker (LocalStack).
 type Config struct {
 	EndpointURL string
 	Region      string
@@ -28,11 +30,14 @@ type Config struct {
 }
 
 func (c Config) Validate() error {
-	if c.EndpointURL == "" || c.Region == "" {
-		return fmt.Errorf("SQS requires an endpoint URL and a region")
+	if c.Region == "" {
+		return fmt.Errorf("SQS requires a region; an empty endpoint selects the managed AWS service of SQS_REGION")
 	}
 	if !regexp.MustCompile(`^[A-Za-z0-9_-]{0,32}$`).MatchString(c.QueuePrefix) {
 		return fmt.Errorf("SQS queue prefix must be at most 32 letters, digits, hyphens or underscores")
+	}
+	if c.EndpointURL == "" {
+		return nil
 	}
 	parsed, err := url.Parse(c.EndpointURL)
 	if err != nil || parsed.Hostname() == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
@@ -61,7 +66,11 @@ func NewClient(ctx context.Context, config Config) (*sqs.Client, error) {
 		return nil, fmt.Errorf("sqs: load aws config: %w", err)
 	}
 	return sqs.NewFromConfig(awsCfg, func(options *sqs.Options) {
-		options.BaseEndpoint = aws.String(config.EndpointURL)
+		// An empty endpoint keeps the SDK's resolved regional AWS endpoint;
+		// an explicit URL targets the configured broker (LocalStack).
+		if config.EndpointURL != "" {
+			options.BaseEndpoint = aws.String(config.EndpointURL)
+		}
 	}), nil
 }
 

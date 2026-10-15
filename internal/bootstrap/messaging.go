@@ -13,9 +13,10 @@ import (
 	"github.com/hendelsantos/jungle-backend-challenge-go/internal/observability"
 )
 
-// messagingModule is composed when SQS_ENDPOINT_URL and DATABASE_URL are set.
-// The consumer shares the pool, the UnitOfWork and the ProcessWager use case
-// with the HTTP boundary; the inbox completion commits with the wager.
+// messagingModule is composed when the SQS gate (SQS_ENABLED, or the
+// historical SQS_ENDPOINT_URL behavior) and DATABASE_URL are set. The consumer
+// shares the pool, the UnitOfWork and the ProcessWager use case with the HTTP
+// boundary; the inbox completion commits with the wager.
 func messagingModule() fx.Option {
 	return fx.Module("messaging",
 		fx.Provide(newSQSClient, newConsumeWagerDeps, newSQSConsumer, postgres.NewOutboxDeliveryRepository, newOutboxMetrics, newOutboxWorkerCount, newPublishAckPause, newOutboxWorker),

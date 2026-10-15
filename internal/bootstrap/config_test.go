@@ -144,3 +144,78 @@ func TestSQSConfigRequiresProviderTrustAndDatabase(t *testing.T) {
 		t.Fatal("SQS enabled without transactional database")
 	}
 }
+
+func TestSQSEnabledGate(t *testing.T) {
+	base := func(t *testing.T) {
+		t.Helper()
+		t.Setenv("DATABASE_URL", "postgres://local")
+		t.Setenv("SQS_PROVIDER_KEYS", `{"provider-a":"local-test-provider-a-key-32-bytes-minimum"}`)
+	}
+	t.Run("auto keeps endpoint behavior", func(t *testing.T) {
+		base(t)
+		t.Setenv("SQS_ENDPOINT_URL", "http://localhost:4566")
+		for _, value := range []string{"", "auto"} {
+			t.Setenv("SQS_ENABLED", value)
+			cfg, err := LoadConfig()
+			if err != nil || !cfg.SQSEnabled {
+				t.Fatalf("SQS_ENABLED=%q must enable messaging with endpoint: %+v, %v", value, cfg, err)
+			}
+		}
+	})
+	t.Run("unset without endpoint disables", func(t *testing.T) {
+		base(t)
+		cfg, err := LoadConfig()
+		if err != nil || cfg.SQSEnabled {
+			t.Fatalf("empty endpoint must disable messaging: %+v, %v", cfg, err)
+		}
+	})
+	t.Run("true forces on with the managed service", func(t *testing.T) {
+		base(t)
+		t.Setenv("SQS_ENABLED", "true")
+		cfg, err := LoadConfig()
+		if err != nil || !cfg.SQSEnabled || cfg.SQSEndpointURL != "" || cfg.SQSRegion != "us-east-1" {
+			t.Fatalf("managed homologation configuration rejected: %+v, %v", cfg, err)
+		}
+		t.Setenv("SQS_REGION", "sa-east-1")
+		cfg, err = LoadConfig()
+		if err != nil || cfg.SQSRegion != "sa-east-1" {
+			t.Fatalf("region override rejected: %+v, %v", cfg, err)
+		}
+	})
+	t.Run("true still requires database and trust", func(t *testing.T) {
+		base(t)
+		t.Setenv("SQS_ENABLED", "1")
+		t.Setenv("DATABASE_URL", "")
+		if _, err := LoadConfig(); err == nil {
+			t.Fatal("SQS_ENABLED=true accepted without database")
+		}
+		t.Setenv("DATABASE_URL", "postgres://local")
+		t.Setenv("SQS_PROVIDER_KEYS", "")
+		if _, err := LoadConfig(); err == nil {
+			t.Fatal("SQS_ENABLED=true accepted without provider keys")
+		}
+	})
+	t.Run("false forces off even with endpoint", func(t *testing.T) {
+		base(t)
+		t.Setenv("SQS_ENDPOINT_URL", "http://localhost:4566")
+		for _, value := range []string{"false", "0"} {
+			t.Setenv("SQS_ENABLED", value)
+			cfg, err := LoadConfig()
+			if err != nil || cfg.SQSEnabled {
+				t.Fatalf("SQS_ENABLED=%q must disable messaging: %+v, %v", value, cfg, err)
+			}
+		}
+		t.Setenv("SQS_ENABLED", "false")
+		t.Setenv("DATABASE_URL", "")
+		if _, err := LoadConfig(); err != nil {
+			t.Fatalf("disabled SQS must not require a database: %v", err)
+		}
+	})
+	t.Run("invalid value rejected", func(t *testing.T) {
+		base(t)
+		t.Setenv("SQS_ENABLED", "maybe")
+		if _, err := LoadConfig(); err == nil {
+			t.Fatal("invalid SQS_ENABLED accepted")
+		}
+	})
+}

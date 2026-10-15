@@ -33,10 +33,13 @@ type Config struct {
 	ReferenceWorkerInterval time.Duration
 	SQSQueuePrefix          string
 	SQSEndpointURL          string
-	SQSRegion               string
-	SQSConsumerProfile      string
-	SQSPublisherProfile     string
-	SQSProviderKeys         sqsadapter.ProviderKeys
+	// SQSEnabled is the composed messaging gate: an explicit SQS_ENABLED, or
+	// the historical behavior of a provided endpoint URL (LocalStack).
+	SQSEnabled          bool
+	SQSRegion           string
+	SQSConsumerProfile  string
+	SQSPublisherProfile string
+	SQSProviderKeys     sqsadapter.ProviderKeys
 }
 
 func LoadConfig() (Config, error) {
@@ -139,11 +142,16 @@ func LoadConfig() (Config, error) {
 	if cfg.SQSRegion == "" {
 		cfg.SQSRegion = "us-east-1"
 	}
+	// The messaging gate honors SQS_ENABLED; an explicit value is validated
+	// before any dependent setting is accepted.
+	if cfg.SQSEnabled, err = sqsEnabledFromEnv(); err != nil {
+		return Config{}, err
+	}
 	// The consumer is transactional: it only composes with the database.
-	if cfg.SQSEndpointURL != "" && cfg.DatabaseURL == "" {
+	if cfg.SQSEnabled && cfg.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL is required for the SQS consumer")
 	}
-	if cfg.SQSEndpointURL != "" {
+	if cfg.SQSEnabled {
 		if err := (sqsadapter.Config{EndpointURL: cfg.SQSEndpointURL, Region: cfg.SQSRegion, QueuePrefix: cfg.SQSQueuePrefix}).Validate(); err != nil {
 			return Config{}, err
 		}
@@ -155,4 +163,32 @@ func LoadConfig() (Config, error) {
 		}
 	}
 	return cfg, nil
+}
+
+// sqsEnabledFromEnv resolves the messaging gate. SQS_ENABLED=true forces SQS
+// on (empty endpoint means the managed AWS service of SQS_REGION — homologation);
+// false forces it off; unset or "auto" keeps the historical behavior: active
+// iff SQS_ENDPOINT_URL is provided (local broker). Invalid values are rejected.
+// sqsRequestedFromEnv mirrors this decision for module composition.
+func sqsEnabledFromEnv() (bool, error) {
+	switch value := os.Getenv("SQS_ENABLED"); value {
+	case "", "auto":
+		return os.Getenv("SQS_ENDPOINT_URL") != "", nil
+	case "true", "1":
+		return true, nil
+	case "false", "0":
+		return false, nil
+	default:
+		return false, fmt.Errorf("SQS_ENABLED must be true, false, or auto (empty), got %q", value)
+	}
+}
+
+func sqsRequestedFromEnv() bool {
+	enabled, err := sqsEnabledFromEnv()
+	if err != nil {
+		// Invalid values fall back to the historical behavior here; LoadConfig
+		// rejects them before the application starts serving.
+		return os.Getenv("SQS_ENDPOINT_URL") != ""
+	}
+	return enabled
 }
