@@ -19,15 +19,36 @@ o caso de uso; PostgreSQL confirma os efeitos financeiros atomicamente.
 | A01 — autorização do broker (credenciais/políticas aplicadas) | ⚠️ Pendente | LocalStack não aplica IAM; MiniStack e ElasticMQ reprovados em POC ([veredito local](docs/AUDITORIA_A01_A02_LOCAL_FINAL.md)) |
 | A02 — mensagens aceitas sobrevivem ao restart do broker | ⚠️ Pendente | LocalStack/MiniStack perdem mensagens; ElasticMQ prova durabilidade mas falha em A01 |
 
+### O que NÃO foi possível demonstrar — leia antes de avaliar
+
+Transparência deliberada: estes itens **não** estão comprovados e não há
+resultado inventado para nenhum deles.
+
+| Limitação | Por quê | Caminho de encerramento |
+| --- | --- | --- |
+| **A01 — o broker rejeitar operações não autorizadas** | O enunciado (§19) exige controle por credenciais e políticas **do broker**. Dos brokers locais gratuitos testados: LocalStack Community não avalia IAM (enforcement é recurso Pro); MiniStack aceita anônimo e chaves builtin forjadas; ElasticMQ não autentica. Não há como provar sem um broker que aplique políticas de verdade | Homologação em AWS SQS gerenciado **já preparada** (roles IAM via STS, políticas de recurso, probes versionados): [HOMOLOGACAO_AWS.md](docs/HOMOLOGACAO_AWS.md) — pendente apenas de uma conta AWS autorizada |
+| **A02 — mensagens aceitas sobreviverem ao restart do broker** | LocalStack (com `PERSISTENCE=1`) e MiniStack (snapshot no shutdown) perderam mensagens aceitas — reproduzido com contagem exata. ElasticMQ provou durabilidade até sob SIGKILL, mas falha em A01 e em compatibilidade | Mesmo caminho da A01 (SQS gerenciado); a **recuperação da aplicação** já é comprovada (inbox/outbox no PostgreSQL), mas ela não ressuscita o que o broker perdeu após o ACK |
+| Testes contra AWS real | Nenhuma conta AWS disponível/autorizada; nenhum serviço pago foi usado | Idem — procedimento, custos (centavos) e limpeza documentados |
+| Soak de 15 min nesta revisão | Não reexecutado na rodada final; ensaio de 60s e regressões de carga anteriores estão publicados | `tests/load/scenarios/soak.js` está pronto para rodar |
+| Segregação de usuários SQL (runtime × migrations) | Compose local usa o usuário administrativo; triggers protegem DML, não DDL de administrador | Exigir usuário separado em produção; nota em [SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md) |
+| Rotação de segredos, backup/restauração de produção | Fora do ambiente local do desafio | [RUNBOOK.md](docs/RUNBOOK.md) registra os limites operacionais |
+| Partidas dobradas, tracing OpenTelemetry, dashboards | Opcionais do enunciado, explicitamente fora do escopo do prazo | — |
+| "Exactly-once" | Não é prometido em lugar nenhum: entrega é at-least-once; a deduplicação financeira durável é a inbox no PostgreSQL | Arquitetura intencional — ver [ARCHITECTURE.md](ARCHITECTURE.md) |
+
+**Mitigações já existentes para A01/A02 no ambiente local** (não são prova dos
+requisitos, apenas reduzem exposição): broker publicado somente em loopback,
+HMAC por provedor impede efeito financeiro de mensagem forjada, inbox
+persistente impede efeito duplo, provisionamento separado do runtime e clientes
+SDK com identidades independentes.
+
 A [auditoria final](docs/AUDITORIA_FINAL_ENTREGA.md) traz a matriz A01–A13,
 comandos, evidências e limites; a [conformidade](docs/CONFORMIDADE_DESAFIO.md)
-relaciona os requisitos oficiais. O encerramento comprovável de A01/A02 está
-**preparado** via homologação em AWS SQS gerenciado
-([HOMOLOGACAO_AWS.md](docs/HOMOLOGACAO_AWS.md)), pendente de conta/autorização.
-Consulte também o [guia de entrevista](docs/GUIA_ENTREVISTA_JUNGLE.md).
+relaciona os requisitos oficiais. Consulte também o
+[guia de entrevista](docs/GUIA_ENTREVISTA_JUNGLE.md).
 
 ## Índice
 
+- [Status do desafio](#status-do-desafio-14102026) — inclui **[o que não foi possível demonstrar](#o-que-não-foi-possível-demonstrar--leia-antes-de-avaliar)**
 - [Demonstração reproduzível](#demonstração-reproduzível)
 - [Executar localmente](#executar-localmente)
 - [Configuração](#configuração)
