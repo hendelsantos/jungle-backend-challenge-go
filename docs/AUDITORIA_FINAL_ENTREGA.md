@@ -31,6 +31,36 @@ Fonte normativa: [enunciado preservado](reference/README_DESAFIO.md).
 
 ## Verificações executadas
 
+### Verificação de prontidão final — 14/10/2026, HEAD `1e2a4cb`
+
+Rodada completa após os incrementos MiniStack/homologação, **sem AWS real e sem
+serviços pagos** (a homologação AWS permanece preparada e não executada; o
+operador não possui conta AWS no momento). A01 continua parcial e A02 continua
+aberto — **não há declaração de conformidade integral**.
+
+| Verificação | Resultado observado |
+| --- | --- |
+| Git | `main` sincronizada com `origin/main` em `1e2a4cb`; sem alterações pendentes do projeto (apenas artefatos do harness `.agents/`, `opencode.json` não versionados) |
+| CI | runs 20/21/23 **success** (`e988707`, `6eb882b`, `1e2a4cb`); run 22 (`3f7ce22`) cancelada pelo push seguinte (concorrência `cancel-in-progress` do workflow) |
+| `go vet` (sem tag, `integration`, `ministackpoc`, `awshomolog`) | exit 0 em todos |
+| `gofmt -l .` | vazio |
+| `go test -race ./... -count=2` | exit 0 |
+| Integração real (projeto dedicado `jungle-verify-final`: PostgreSQL 17, Keycloak 26.8, LocalStack 4.14) | `-count=1`: 652 testes pass, 0 fail, **0 skip**; `-count=2`: 1.304 pass, 0 fail, 0 skip |
+| Checkout limpo (`git clone` local de `1e2a4cb`, projeto `jungle-proof-final-1410`) | `up --build --wait`: migrations aplicadas, **3 réplicas API saudáveis** |
+| `scripts/smoke.sh` no checkout limpo | 50 duplicatas → 1 débito/49 replays; 80+80 sobre 100 → 20.00, 1 débito, 1 rejeição; reconciliação consistente |
+| `scripts/fault.sh` (E/F/H) no checkout limpo | aprovado: kill antes de DeleteMessage → mesma mensagem, 1 inbox, saldo 75.00; janela publish→ACK → attempts=2 com payload idêntico; referência pendente cruzando HTTP→SQS após restart |
+| Encerramento gracioso | `stop -t 30 api`: as três réplicas terminaram com **exit 0** |
+| gitleaks (histórico completo, config do repo) | `no leaks found` (48 commits) |
+| `govulncheck@v1.9.0 ./...` | No vulnerabilities found |
+| `scripts/doccheck.sh` + sintaxe de todos os scripts | aprovados |
+| `docker compose config -q` (delivery, dev, homolog, ministack) | os quatro válidos |
+
+Volumes dos projetos de prova (`jungle-verify-final`, `jungle-proof-final-1410`)
+foram **preservados** (containers parados/removidos, sem `down -v`). Nenhum
+volume, banco ou dado pré-existente foi tocado.
+
+### Campanha anterior (preservada)
+
 Incremento posterior de provisionamento separado: [evidências da retomada](audit/2026-10-14/sqs-runtime.md).
 A01 continua parcial; A02 continua aberto. A tabela abaixo preserva a campanha
 anterior; não confundir seus resultados com a nova execução.
